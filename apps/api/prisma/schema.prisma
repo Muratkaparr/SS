@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  PLATFORM_ADMIN
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  name      String
+  location  String?
+  // Depo sekmelerinin gösterim sırası (admin tarafından sürükle-bırak ile ayarlanır).
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Depo bir Admin'e aittir; o Admin depoyu diğer depolarından bağımsız, sınırsız
+  // sayıda oluşturabilir/yeniden adlandırabilir. Admin'in altındaki Kullanıcılar da
+  // (adminOwnerId üzerinden) bu depo havuzunun tamamını görür.
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  products Product[]
+
+  @@unique([ownerId, name])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Sadece role=USER için anlamlıdır: hangi Admin'in depo havuzuna erişir.
+  adminOwnerId String?
+  adminOwner   User?   @relation("AdminOwnsUsers", fields: [adminOwnerId], references: [id])
+  managedUsers User[]  @relation("AdminOwnsUsers")
+
+  ownedWarehouses Warehouse[]
+  stockMovements  StockMovement[]
+  auditLogs       AuditLog[]
+}
+
+model Category {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  unit        String   @default("adet")
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  imageUrl String? // sadece admin panelinden yüklenir
+
+  // Ürünlerin listede/kartlarda gösterim sırası (admin sürükle-bırak ile ayarlar).
+  sortOrder Int @default(0)
+
+  currentStock Int @default(0) // ledger'dan türetilip cache'lenir
+
+  leadTimeDays     Int @default(5)
+  safetyMarginDays Int @default(3)
+
+  criticalLevelManual Int?    // yeni ürünlerde veya admin override'ında kullanılır
+  criticalLevel        Int    @default(0) // efektif kritik seviye (öneri veya manuel)
+  suggestedCriticalLevel Int? // sistem tarafından hesaplanan öneri
+  avgDailyConsumption7d  Float @default(0)
+  avgDailyConsumption30d Float @default(0)
+  confidence   String  @default("LOW") // LOW | MEDIUM | HIGH
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@unique([warehouseId, name])
+  @@index([warehouseId, sortOrder])
+}
+
+model StockMovement {
+  id        String       @id @default(uuid())
+  productId String
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type      MovementType
+  quantity  Int
+  reason    String?
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  createdAt DateTime     @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  resource   String
+  resourceId String?
+  meta       String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([resource, resourceId])
+}

@@ -1,0 +1,385 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { User } from '@prisma/client';
+import { MovementType } from '@repo/shared-types';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import {
+  assertWarehouseAccess,
+  getAccessibleWarehouseIds,
+} from '../common/utils/warehouse-scope';
+import { PrismaService } from '../prisma/prisma.service';
+import { StockService } from '../stock/stock.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { DuplicateProductDto } from './dto/duplicate-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+
+@Injectable()
+export class ProductsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLog: AuditLogService,
+    private readonly stockService: StockService,
+  ) {}
+
+  async findAll(params: {
+    actor: User;
+    warehouseId?: string;
+    search?: string;
+    categoryId?: string;
+    criticalOnly?: boolean;
+    page: number;
+    limit: number;
+  }) {
+    const { actor, search, categoryId, criticalOnly, page, limit } = params;
+
+    const warehouseFilter = params.warehouseId
+      ? {
+          warehouseId: await assertWarehouseAccess(
+            this.prisma,
+            actor,
+            params.warehouseId,
+          ),
+        }
+      : {
+          warehouseId: {
+            in: await getAccessibleWarehouseIds(this.prisma, actor),
+          },
+        };
+
+    const where = {
+      ...warehouseFilter,
+      ...(categoryId ? { categoryId } : {}),
+      ...(search ? { name: { contains: search } } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: {
+          category: { select: { id: true, name: true } },
+          warehouse: { select: { id: true, name: true } },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    const filtered = criticalOnly
+      ? items.filter((p) => p.currentStock <= p.criticalLevel)
+      : items;
+
+    return { items: filtered, total, page, limit };
+  }
+
+  /** Ürünleri admin'in istediği sırayla dizer (sürükle-bırak). */
+  async reorder(ids: string[], actor: User) {
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) return { success: true };
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, warehouseId: true },
+    });
+    if (products.length !== uniqueIds.length) {
+      throw new NotFoundException('Bazı ürünler bulunamadı');
+    }
+
+    if (actor.role !== 'PLATFORM_ADMIN') {
+      const accessible = await getAccessibleWarehouseIds(this.prisma, actor);
+      for (const product of products) {
+        if (!accessible.includes(product.warehouseId)) {
+          throw new ForbiddenException('Bu ürüne erişiminiz yok');
+        }
+      }
+    }
+
+    await this.prisma.$transaction(
+      uniqueIds.map((id, index) =>
+        this.prisma.product.update({
+          where: { id },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'REORDER',
+      resource: 'PRODUCT',
+      meta: { count: uniqueIds.length },
+    });
+
+    return { success: true };
+  }
+
+  async findOne(id: string, actor: User) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        category: { select: { id: true, name: true } },
+        warehouse: { select: { id: true, name: true } },
+      },
+    });
+    if (!product) throw new NotFoundException('Ürün bulunamadı');
+    if (actor.role !== 'PLATFORM_ADMIN') {
+      const accessible = await getAccessibleWarehouseIds(this.prisma, actor);
+      if (!accessible.includes(product.warehouseId)) {
+        throw new NotFoundException('Ürün bulunamadı');
+      }
+    }
+    return product;
+  }
+
+  async create(dto: CreateProductDto, actor: User) {
+    await assertWarehouseAccess(this.prisma, actor, dto.warehouseId);
+
+    const existing = await this.prisma.product.findUnique({
+      where: {
+        warehouseId_name: { warehouseId: dto.warehouseId, name: dto.name },
+      },
+    });
+    if (existing) {
+      throw new ConflictException('Bu ürün adı bu depoda zaten kullanılıyor');
+    }
+
+    const last = await this.prisma.product.findFirst({
+      where: { warehouseId: dto.warehouseId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+
+    const product = await this.prisma.product.create({
+      data: {
+        name: dto.name,
+        description: dto.description,
+        unit: dto.unit ?? 'adet',
+        categoryId: dto.categoryId,
+        warehouseId: dto.warehouseId,
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+        leadTimeDays: dto.leadTimeDays ?? 5,
+        safetyMarginDays: dto.safetyMarginDays ?? 3,
+        criticalLevel: dto.criticalLevel,
+        criticalLevelManual: dto.criticalLevel,
+      },
+    });
+
+    if (dto.openingStock && dto.openingStock > 0) {
+      await this.stockService.createMovement(
+        {
+          productId: product.id,
+          type: MovementType.ADJUSTMENT,
+          quantity: dto.openingStock,
+          reason: 'Açılış stoğu',
+        },
+        actor,
+      );
+    }
+
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'CREATE',
+      resource: 'PRODUCT',
+      resourceId: product.id,
+      meta: { name: product.name },
+    });
+
+    return this.findOne(product.id, actor);
+  }
+
+  async update(id: string, dto: UpdateProductDto, actor: User) {
+    const target = await this.findOne(id, actor);
+    const cascade = dto.applyToAllWarehouses === true;
+    const originalName = target.name;
+
+    if (dto.name && dto.name !== target.name) {
+      const existing = await this.prisma.product.findUnique({
+        where: {
+          warehouseId_name: { warehouseId: target.warehouseId, name: dto.name },
+        },
+      });
+      if (existing)
+        throw new ConflictException(
+          'Bu ürün adı bu depoda zaten kullanılıyor',
+        );
+    }
+
+    const data: Record<string, unknown> = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.unit !== undefined) data.unit = dto.unit;
+    if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
+    if (dto.leadTimeDays !== undefined) data.leadTimeDays = dto.leadTimeDays;
+    if (dto.safetyMarginDays !== undefined)
+      data.safetyMarginDays = dto.safetyMarginDays;
+    if (dto.criticalLevel !== undefined) {
+      data.criticalLevel = dto.criticalLevel;
+      data.criticalLevelManual = dto.criticalLevel;
+    }
+
+    // "Bütün Ürünler" görünümünden düzenlenirse, aynı sahibin diğer depolarındaki
+    // aynı isme sahip ürünler de (isim dahil) aynı değerlerle güncellenir.
+    let siblings: { id: string; warehouseId: string }[] = [];
+    if (cascade) {
+      const targetWarehouse = await this.prisma.warehouse.findUnique({
+        where: { id: target.warehouseId },
+        select: { ownerId: true },
+      });
+      if (targetWarehouse) {
+        siblings = await this.prisma.product.findMany({
+          where: {
+            name: originalName,
+            id: { not: target.id },
+            warehouse: { ownerId: targetWarehouse.ownerId },
+          },
+          select: { id: true, warehouseId: true },
+        });
+      }
+
+      if (dto.name && dto.name !== originalName && siblings.length > 0) {
+        const conflicts = await this.prisma.product.findMany({
+          where: {
+            name: dto.name,
+            warehouseId: { in: siblings.map((s) => s.warehouseId) },
+          },
+          select: { warehouseId: true },
+        });
+        if (conflicts.length > 0) {
+          throw new ConflictException(
+            'Bu ürün adı diğer depolardan birinde zaten kullanılıyor, değişiklik tüm depolara uygulanamadı',
+          );
+        }
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.product.update({ where: { id }, data }),
+      ...siblings.map((s) =>
+        this.prisma.product.update({ where: { id: s.id }, data }),
+      ),
+    ]);
+
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'UPDATE',
+      resource: 'PRODUCT',
+      resourceId: id,
+      meta: {
+        changes: Object.keys(data),
+        ...(siblings.length > 0
+          ? { cascadedToWarehouses: siblings.length }
+          : {}),
+      },
+    });
+
+    if (dto.leadTimeDays !== undefined || dto.safetyMarginDays !== undefined) {
+      await this.stockService.recomputeSuggestion(id);
+      for (const sibling of siblings) {
+        await this.stockService.recomputeSuggestion(sibling.id);
+      }
+    }
+
+    return this.findOne(id, actor);
+  }
+
+  async remove(id: string, actor: User) {
+    const target = await this.findOne(id, actor);
+    await this.prisma.product.delete({ where: { id } });
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'DELETE',
+      resource: 'PRODUCT',
+      resourceId: id,
+      meta: { name: target.name },
+    });
+    return { success: true };
+  }
+
+  async setImage(id: string, imageUrl: string, actor: User) {
+    await this.findOne(id, actor);
+    await this.prisma.product.update({ where: { id }, data: { imageUrl } });
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'UPDATE_IMAGE',
+      resource: 'PRODUCT',
+      resourceId: id,
+      meta: { imageUrl },
+    });
+    return this.findOne(id, actor);
+  }
+
+  /** Var olan bir ürünü, aynı bilgilerle başka bir depoya hızlıca ekler (stok sıfırdan başlar). */
+  async duplicate(id: string, dto: DuplicateProductDto, actor: User) {
+    const source = await this.findOne(id, actor);
+    await assertWarehouseAccess(this.prisma, actor, dto.targetWarehouseId);
+
+    if (dto.targetWarehouseId === source.warehouseId) {
+      throw new ConflictException('Ürün zaten bu depoda');
+    }
+
+    const existing = await this.prisma.product.findUnique({
+      where: {
+        warehouseId_name: {
+          warehouseId: dto.targetWarehouseId,
+          name: source.name,
+        },
+      },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'Bu ürün adı hedef depoda zaten kullanılıyor',
+      );
+    }
+
+    const last = await this.prisma.product.findFirst({
+      where: { warehouseId: dto.targetWarehouseId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+
+    const product = await this.prisma.product.create({
+      data: {
+        name: source.name,
+        description: source.description,
+        unit: source.unit,
+        categoryId: source.categoryId,
+        warehouseId: dto.targetWarehouseId,
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+        leadTimeDays: source.leadTimeDays,
+        safetyMarginDays: source.safetyMarginDays,
+        criticalLevel: source.criticalLevel,
+        criticalLevelManual: source.criticalLevel,
+      },
+    });
+
+    if (dto.openingStock && dto.openingStock > 0) {
+      await this.stockService.createMovement(
+        {
+          productId: product.id,
+          type: MovementType.ADJUSTMENT,
+          quantity: dto.openingStock,
+          reason: `${source.name} — başka depodan hızlı eklendi`,
+        },
+        actor,
+      );
+    }
+
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'CREATE',
+      resource: 'PRODUCT',
+      resourceId: product.id,
+      meta: {
+        name: product.name,
+        duplicatedFrom: source.id,
+      },
+    });
+
+    return this.findOne(product.id, actor);
+  }
+}
