@@ -1,5 +1,4 @@
 import {
-  IsEmail,
   IsEnum,
   IsOptional,
   IsString,
@@ -8,8 +7,9 @@ import {
 import { Role } from '@repo/shared-types';
 
 export class CreateUserDto {
-  @IsEmail()
-  email!: string;
+  @IsString()
+  @MinLength(3)
+  username!: string;
 
   @IsString()
   @MinLength(6)

@@ -70,15 +70,15 @@ export class UsersService {
     }
 
     const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { username: dto.username },
     });
     if (existing) {
-      throw new ConflictException('Bu e-posta zaten kayıtlı');
+      throw new ConflictException('Bu kullanıcı adı zaten kayıtlı');
     }
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        username: dto.username,
         name: dto.name,
         role: dto.role,
         passwordHash,
@@ -91,7 +91,7 @@ export class UsersService {
       action: 'CREATE',
       resource: 'USER',
       resourceId: user.id,
-      meta: { email: user.email, role: user.role },
+      meta: { username: user.username, role: user.role },
     });
     return sanitizeUser(user);
   }
@@ -150,6 +150,17 @@ export class UsersService {
     if (dto.password) data.passwordHash = await bcrypt.hash(dto.password, 10);
 
     if (!scoped) {
+      // Sadece Platform Admin kullanıcı adını değiştirebilir.
+      if (dto.username !== undefined && dto.username !== target.username) {
+        const existing = await this.prisma.user.findUnique({
+          where: { username: dto.username },
+        });
+        if (existing) {
+          throw new ConflictException('Bu kullanıcı adı zaten kayıtlı');
+        }
+        data.username = dto.username;
+      }
+
       // Sadece Platform Admin rol/ekip ataması değiştirebilir.
       const nextRole = dto.role ?? targetRole;
       if (dto.role !== undefined) data.role = dto.role;
@@ -219,7 +230,7 @@ export class UsersService {
       action: 'DELETE',
       resource: 'USER',
       resourceId: id,
-      meta: { email: target.email },
+      meta: { username: target.username },
     });
     return { success: true };
   }

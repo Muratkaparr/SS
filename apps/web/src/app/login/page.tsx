@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label } from '@/components/ui/input';
 
 const schema = z.object({
-  email: z.string().email('Geçerli bir e-posta girin'),
+  username: z.string().min(1, 'Kullanıcı adı gerekli'),
   password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
 });
 
@@ -40,7 +40,7 @@ export default function LoginPage() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({ message: 'Giriş başarısız' }));
-      setServerError(body.message ?? 'E-posta veya şifre hatalı');
+      setServerError(body.message ?? 'Kullanıcı adı veya şifre hatalı');
       return;
     }
     const data = await res.json();
@@ -72,16 +72,16 @@ export default function LoginPage() {
           )}
 
           <div>
-            <Label htmlFor="email">E-posta</Label>
+            <Label htmlFor="username">Kullanıcı Adı</Label>
             <Input
-              id="email"
-              type="email"
+              id="username"
+              type="text"
               autoComplete="username"
-              placeholder="ornek@depo.local"
-              error={errors.email?.message}
-              {...register('email')}
+              placeholder="kullaniciadi"
+              error={errors.username?.message}
+              {...register('username')}
             />
-            <FieldError>{errors.email?.message}</FieldError>
+            <FieldError>{errors.username?.message}</FieldError>
           </div>
 
           <div>
@@ -104,9 +104,9 @@ export default function LoginPage() {
 
         <div className="mt-6 rounded-md border border-dashed border-border p-4 text-xs text-muted">
           <p className="mb-1.5 font-medium text-ink">Demo hesaplar</p>
-          <p>Kullanıcı: kullanici@depo.local</p>
-          <p>Admin: admin@depo.local</p>
-          <p>Developer: developer@depo.local</p>
+          <p>Kullanıcı: kullanici</p>
+          <p>Admin: admin</p>
+          <p>Developer: developer</p>
           <p className="mt-1">Şifre (hepsi): parola123</p>
         </div>
       </div>

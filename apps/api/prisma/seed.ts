@@ -170,10 +170,10 @@ async function main() {
   const passwordHash = await bcrypt.hash('parola123', 10);
 
   const platformAdmin = await prisma.user.upsert({
-    where: { email: 'developer@depo.local' },
+    where: { username: 'developer' },
     update: {},
     create: {
-      email: 'developer@depo.local',
+      username: 'developer',
       name: 'Sistem Yöneticisi',
       role: Role.PLATFORM_ADMIN,
       passwordHash,
@@ -182,10 +182,10 @@ async function main() {
 
   // --- İstanbul Admin'i: birden fazla depo yönetiyor (sekme geçişini göstermek için) ---
   const istanbulAdmin = await prisma.user.upsert({
-    where: { email: 'admin@depo.local' },
+    where: { username: 'admin' },
     update: {},
     create: {
-      email: 'admin@depo.local',
+      username: 'admin',
       name: 'Depo Yöneticisi (İstanbul)',
       role: Role.ADMIN,
       passwordHash,
@@ -193,10 +193,10 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { email: 'kullanici@depo.local' },
+    where: { username: 'kullanici' },
     update: {},
     create: {
-      email: 'kullanici@depo.local',
+      username: 'kullanici',
       name: 'Depo Görevlisi (İstanbul)',
       role: Role.USER,
       passwordHash,
@@ -220,10 +220,10 @@ async function main() {
 
   // --- Ankara Admin'i: tek depo (endüstriyel/lojistik malzemeleri) ---
   const ankaraAdmin = await prisma.user.upsert({
-    where: { email: 'ankara.admin@depo.local' },
+    where: { username: 'ankara.admin' },
     update: {},
     create: {
-      email: 'ankara.admin@depo.local',
+      username: 'ankara.admin',
       name: 'Depo Yöneticisi (Ankara)',
       role: Role.ADMIN,
       passwordHash,
@@ -231,10 +231,10 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { email: 'ankara.kullanici@depo.local' },
+    where: { username: 'ankara.kullanici' },
     update: {},
     create: {
-      email: 'ankara.kullanici@depo.local',
+      username: 'ankara.kullanici',
       name: 'Depo Görevlisi (Ankara)',
       role: Role.USER,
       passwordHash,
@@ -254,13 +254,13 @@ async function main() {
 
   console.log('Seed tamamlandı.\n');
   console.log('İstanbul Admin (2 depo: Merkez Depo, Yedek Depo):');
-  console.log('  Admin     : admin@depo.local / parola123');
-  console.log('  Kullanıcı : kullanici@depo.local / parola123');
+  console.log('  Admin     : admin / parola123');
+  console.log('  Kullanıcı : kullanici / parola123');
   console.log('\nAnkara Admin (1 depo: Anadolu Depo):');
-  console.log('  Admin     : ankara.admin@depo.local / parola123');
-  console.log('  Kullanıcı : ankara.kullanici@depo.local / parola123');
+  console.log('  Admin     : ankara.admin / parola123');
+  console.log('  Kullanıcı : ankara.kullanici / parola123');
   console.log('\nPlatform Admin (tüm depoları görür):');
-  console.log('  Developer : developer@depo.local / parola123');
+  console.log('  Developer : developer / parola123');
   console.log(`  (Platform Admin id: ${platformAdmin.id})`);
 }
 

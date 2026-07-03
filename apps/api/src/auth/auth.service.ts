@@ -34,17 +34,17 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async login(email: string, password: string) {
+  async login(username: string, password: string) {
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { username },
       include: { adminOwner: { select: { id: true, name: true } } },
     });
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('E-posta veya şifre hatalı');
+      throw new UnauthorizedException('Kullanıcı adı veya şifre hatalı');
     }
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) {
-      throw new UnauthorizedException('E-posta veya şifre hatalı');
+      throw new UnauthorizedException('Kullanıcı adı veya şifre hatalı');
     }
     const tokens = await this.issueTokens(user.id, user.role);
     await this.auditLog.log({

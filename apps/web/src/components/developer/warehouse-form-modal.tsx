@@ -75,7 +75,7 @@ export function WarehouseFormModal({ open, onClose }: { open: boolean; onClose: 
             <option value="">Admin seçin…</option>
             {admins.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.name} ({a.email})
+                {a.name} ({a.username})
               </option>
             ))}
           </Select>

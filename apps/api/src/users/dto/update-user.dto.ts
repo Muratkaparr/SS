@@ -12,6 +12,12 @@ export class UpdateUserDto {
   @IsString()
   name?: string;
 
+  /** Sadece Platform Admin değiştirebilir. */
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  username?: string;
+
   @IsOptional()
   @IsEnum(Role)
   role?: Role;

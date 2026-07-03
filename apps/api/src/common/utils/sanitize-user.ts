@@ -8,7 +8,7 @@ type UserWithAdminOwner = User & {
 export function sanitizeUser(user: UserWithAdminOwner): PublicUser {
   return {
     id: user.id,
-    email: user.email,
+    username: user.username,
     name: user.name,
     role: user.role as PublicUser['role'],
     isActive: user.isActive,

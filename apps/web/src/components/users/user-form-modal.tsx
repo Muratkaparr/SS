@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,34 +18,45 @@ const ROLE_LABEL: Record<Role, string> = {
   [Role.PLATFORM_ADMIN]: 'Platform Admin (Developer)',
 };
 
-const createSchema = z
-  .object({
-    name: z.string().min(2, 'İsim en az 2 karakter olmalı'),
-    email: z.string().email('Geçerli bir e-posta girin'),
-    password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
-    role: z.nativeEnum(Role),
-    adminOwnerId: z.string().optional(),
-  })
-  .refine((v) => v.role !== Role.USER || !!v.adminOwnerId, {
-    message: '"Kullanıcı" rolü için bir Admin seçilmeli',
-    path: ['adminOwnerId'],
-  });
+const createBaseSchema = z.object({
+  name: z.string().min(2, 'İsim en az 2 karakter olmalı'),
+  username: z.string().min(3, 'Kullanıcı adı en az 3 karakter olmalı'),
+  password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
+  role: z.nativeEnum(Role),
+  adminOwnerId: z.string().optional(),
+});
 
-const editSchema = z
-  .object({
-    name: z.string().min(2, 'İsim en az 2 karakter olmalı'),
-    role: z.nativeEnum(Role),
-    isActive: z.boolean(),
-    password: z.string().min(6, 'Şifre en az 6 karakter olmalı').optional().or(z.literal('')),
-    adminOwnerId: z.string().optional(),
-  })
-  .refine((v) => v.role !== Role.USER || !!v.adminOwnerId, {
-    message: '"Kullanıcı" rolü için bir Admin seçilmeli',
-    path: ['adminOwnerId'],
-  });
+const editBaseSchema = z.object({
+  name: z.string().min(2, 'İsim en az 2 karakter olmalı'),
+  // Sadece Platform Admin (developer paneli) değiştirebilir; admin panelinde salt-okunur gösterilir.
+  username: z.string().min(3, 'Kullanıcı adı en az 3 karakter olmalı').optional(),
+  role: z.nativeEnum(Role),
+  isActive: z.boolean(),
+  password: z.string().min(6, 'Şifre en az 6 karakter olmalı').optional().or(z.literal('')),
+  adminOwnerId: z.string().optional(),
+});
 
-type CreateValues = z.infer<typeof createSchema>;
-type EditValues = z.infer<typeof editSchema>;
+// Admin panelinden (restrictToUserRole) çağrıldığında "Bağlı Admin" alanı hiç gösterilmez —
+// backend zaten otomatik atar — bu yüzden bu durumda zorunlu tutmuyoruz.
+const adminOwnerRule = (v: { role: Role; adminOwnerId?: string }) =>
+  v.role !== Role.USER || !!v.adminOwnerId;
+const adminOwnerRuleOptions = {
+  message: '"Kullanıcı" rolü için bir Admin seçilmeli',
+  path: ['adminOwnerId'],
+};
+
+function buildCreateSchema(restrictToUserRole?: boolean) {
+  if (restrictToUserRole) return createBaseSchema;
+  return createBaseSchema.refine(adminOwnerRule, adminOwnerRuleOptions);
+}
+
+function buildEditSchema(restrictToUserRole?: boolean) {
+  if (restrictToUserRole) return editBaseSchema;
+  return editBaseSchema.refine(adminOwnerRule, adminOwnerRuleOptions);
+}
+
+type CreateValues = z.infer<typeof createBaseSchema>;
+type EditValues = z.infer<typeof editBaseSchema>;
 
 export function UserFormModal({
   open,
@@ -72,6 +83,9 @@ export function UserFormModal({
   });
   const admins = users?.filter((u) => u.role === Role.ADMIN) ?? [];
 
+  const createSchema = useMemo(() => buildCreateSchema(restrictToUserRole), [restrictToUserRole]);
+  const editSchema = useMemo(() => buildEditSchema(restrictToUserRole), [restrictToUserRole]);
+
   const createForm = useForm<CreateValues>({
     resolver: zodResolver(createSchema),
     defaultValues: { role: Role.USER },
@@ -84,13 +98,14 @@ export function UserFormModal({
       if (user) {
         editForm.reset({
           name: user.name,
+          username: user.username,
           role: user.role,
           isActive: user.isActive,
           password: '',
           adminOwnerId: user.adminOwnerId ?? undefined,
         });
       } else {
-        createForm.reset({ name: '', email: '', password: '', role: Role.USER, adminOwnerId: undefined });
+        createForm.reset({ name: '', username: '', password: '', role: Role.USER, adminOwnerId: undefined });
       }
     }
   }, [open, user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -143,8 +158,15 @@ export function UserFormModal({
             <FieldError>{editForm.formState.errors.name?.message}</FieldError>
           </div>
           <div>
-            <Label>E-posta</Label>
-            <Input value={user!.email} disabled />
+            <Label htmlFor="edit-username">Kullanıcı Adı</Label>
+            {restrictToUserRole ? (
+              <Input value={user!.username} disabled />
+            ) : (
+              <>
+                <Input id="edit-username" {...editForm.register('username')} />
+                <FieldError>{editForm.formState.errors.username?.message}</FieldError>
+              </>
+            )}
           </div>
           {!restrictToUserRole && (
             <div>
@@ -166,7 +188,7 @@ export function UserFormModal({
                 <option value="">Admin seçin…</option>
                 {admins.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.email})
+                    {a.name} ({a.username})
                   </option>
                 ))}
               </Select>
@@ -218,9 +240,9 @@ export function UserFormModal({
             <FieldError>{createForm.formState.errors.name?.message}</FieldError>
           </div>
           <div>
-            <Label htmlFor="create-email">E-posta</Label>
-            <Input id="create-email" type="email" {...createForm.register('email')} />
-            <FieldError>{createForm.formState.errors.email?.message}</FieldError>
+            <Label htmlFor="create-username">Kullanıcı Adı</Label>
+            <Input id="create-username" type="text" {...createForm.register('username')} />
+            <FieldError>{createForm.formState.errors.username?.message}</FieldError>
           </div>
           <div>
             <Label htmlFor="create-password">Şifre</Label>
@@ -246,7 +268,7 @@ export function UserFormModal({
                 <option value="">Admin seçin…</option>
                 {admins.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.email})
+                    {a.name} ({a.username})
                   </option>
                 ))}
               </Select>

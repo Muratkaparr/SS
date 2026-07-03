@@ -2,7 +2,7 @@ import type { Role } from "./role";
 
 export interface PublicUser {
   id: string;
-  email: string;
+  username: string;
   name: string;
   role: Role;
   isActive: boolean;
