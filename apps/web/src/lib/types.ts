@@ -82,7 +82,7 @@ export interface AuditLogEntry {
   resourceId: string | null;
   meta: string | null;
   createdAt: string;
-  user: { id: string; name: string; email: string; role: string } | null;
+  user: { id: string; name: string; username: string; role: string } | null;
 }
 
 export interface Warehouse {
