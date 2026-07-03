@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Trash2, UserRound } from 'lucide-react';
+import { Pencil, Plus, ShieldCheck, Trash2, UserRound, Users as UsersIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PublicUser } from '@repo/shared-types';
 import { UserFormModal } from '@/components/users/user-form-modal';
@@ -12,6 +12,7 @@ import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@/components/ui/table';
 import { TableSkeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -25,6 +26,38 @@ const ROLE_TONE: Record<string, 'neutral' | 'accent' | 'success'> = {
   ADMIN: 'accent',
   PLATFORM_ADMIN: 'success',
 };
+
+function UserActions({
+  user,
+  currentUserId,
+  onEdit,
+  onDelete,
+}: {
+  user: PublicUser;
+  currentUserId: string;
+  onEdit: (u: PublicUser) => void;
+  onDelete: (u: PublicUser) => void;
+}) {
+  const isSelf = user.id === currentUserId;
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <Badge tone={user.isActive ? 'success' : 'danger'}>{user.isActive ? 'Aktif' : 'Pasif'}</Badge>
+      <Button size="sm" variant="secondary" onClick={() => onEdit(user)}>
+        <Pencil size={14} />
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={isSelf}
+        title={isSelf ? 'Kendi hesabınızı silemezsiniz' : 'Sil'}
+        onClick={() => onDelete(user)}
+        className="hover:!bg-danger/10 hover:!text-danger"
+      >
+        <Trash2 size={14} />
+      </Button>
+    </div>
+  );
+}
 
 export function UsersManager({
   currentUserId,
@@ -61,6 +94,27 @@ export function UsersManager({
     },
   });
 
+  /** Developer panelinde kullanıcılar tek bir liste yerine bağlı oldukları Admin'e göre gruplanır. */
+  const { platformAdmins, adminGroups, unassigned } = useMemo(() => {
+    const all = users ?? [];
+    const admins = all.filter((u) => u.role === 'ADMIN');
+    const regularUsers = all.filter((u) => u.role === 'USER');
+    const adminIds = new Set(admins.map((a) => a.id));
+
+    return {
+      platformAdmins: all.filter((u) => u.role === 'PLATFORM_ADMIN'),
+      adminGroups: admins
+        .map((admin) => ({
+          admin,
+          members: regularUsers.filter((u) => u.adminOwnerId === admin.id),
+        }))
+        .sort((a, b) => a.admin.name.localeCompare(b.admin.name, 'tr')),
+      unassigned: regularUsers.filter(
+        (u) => !u.adminOwnerId || !adminIds.has(u.adminOwnerId),
+      ),
+    };
+  }, [users]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -74,22 +128,24 @@ export function UsersManager({
         </Button>
       </div>
 
-      <div className="rounded-md border border-border bg-surface">
-        {isLoading ? (
+      {isLoading ? (
+        <div className="rounded-md border border-border bg-surface">
           <TableSkeleton rows={5} cols={5} />
-        ) : !users || users.length === 0 ? (
+        </div>
+      ) : !users || users.length === 0 ? (
+        <div className="rounded-md border border-border bg-surface">
           <EmptyState
             icon={UserRound}
             title="Kullanıcı bulunamadı"
             description={restrictToUserRole ? 'Henüz bir kullanıcı hesabı oluşturulmadı.' : undefined}
           />
-        ) : (
+        </div>
+      ) : restrictToUserRole ? (
+        <div className="rounded-md border border-border bg-surface">
           <Table>
             <Thead>
               <Th>Ad Soyad</Th>
-              <Th>E-posta</Th>
-              {!restrictToUserRole && <Th>Rol</Th>}
-              {!restrictToUserRole && <Th>Bağlı Admin</Th>}
+              <Th>Kullanıcı Adı</Th>
               <Th>Durum</Th>
               <Th className="text-right">İşlemler</Th>
             </Thead>
@@ -102,17 +158,7 @@ export function UsersManager({
                       {u.name}
                       {isSelf && <span className="ml-2 text-xs text-muted">(siz)</span>}
                     </Td>
-                    <Td className="text-muted">{u.email}</Td>
-                    {!restrictToUserRole && (
-                      <Td>
-                        <Badge tone={ROLE_TONE[u.role]} withIcon={false}>
-                          {ROLE_LABEL[u.role]}
-                        </Badge>
-                      </Td>
-                    )}
-                    {!restrictToUserRole && (
-                      <Td className="text-muted">{u.adminOwnerName ?? '—'}</Td>
-                    )}
+                    <Td className="text-muted">{u.username}</Td>
                     <Td>
                       <Badge tone={u.isActive ? 'success' : 'danger'}>
                         {u.isActive ? 'Aktif' : 'Pasif'}
@@ -140,8 +186,112 @@ export function UsersManager({
               })}
             </Tbody>
           </Table>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {platformAdmins.length > 0 && (
+            <div className="rounded-md border border-border bg-surface">
+              <div className="flex items-center gap-2 border-b border-border bg-surface-2 px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted">
+                <ShieldCheck size={13} />
+                Platform Admin
+              </div>
+              <div className="divide-y divide-border">
+                {platformAdmins.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-medium text-ink">{u.name}</span>
+                      {u.id === currentUserId && <span className="text-xs text-muted">(siz)</span>}
+                      <span className="truncate text-xs text-muted">({u.username})</span>
+                    </div>
+                    <UserActions
+                      user={u}
+                      currentUserId={currentUserId}
+                      onEdit={setEditing}
+                      onDelete={setDeleting}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {adminGroups.map(({ admin, members }) => (
+            <div key={admin.id} className="rounded-md border border-border bg-surface">
+              <div className="flex items-center justify-between gap-3 border-b border-border bg-surface-2 px-4 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Badge tone={ROLE_TONE.ADMIN} withIcon={false}>
+                    {ROLE_LABEL.ADMIN}
+                  </Badge>
+                  <span className="truncate font-medium text-ink">{admin.name}</span>
+                  {admin.id === currentUserId && <span className="text-xs text-muted">(siz)</span>}
+                  <span className="truncate text-xs text-muted">({admin.username})</span>
+                  <Badge tone="neutral" withIcon={false} className="ml-1">
+                    <UsersIcon size={11} />
+                    {members.length}
+                  </Badge>
+                </div>
+                <UserActions
+                  user={admin}
+                  currentUserId={currentUserId}
+                  onEdit={setEditing}
+                  onDelete={setDeleting}
+                />
+              </div>
+
+              {members.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-muted">Bu Admin'in ekibinde henüz bir kullanıcı yok.</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {members.map((u) => (
+                    <div
+                      key={u.id}
+                      className={cn(
+                        'ml-4 flex items-center justify-between gap-3 border-l-2 border-accent/25 py-2.5 pl-6 pr-4',
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-ink">{u.name}</span>
+                        {u.id === currentUserId && <span className="text-xs text-muted">(siz)</span>}
+                        <span className="truncate text-xs text-muted">({u.username})</span>
+                      </div>
+                      <UserActions
+                        user={u}
+                        currentUserId={currentUserId}
+                        onEdit={setEditing}
+                        onDelete={setDeleting}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {unassigned.length > 0 && (
+            <div className="rounded-md border border-dashed border-border bg-surface">
+              <div className="border-b border-dashed border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted">
+                Bağlı Admin'i olmayan kullanıcılar
+              </div>
+              <div className="divide-y divide-border">
+                {unassigned.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-medium text-ink">{u.name}</span>
+                      <span className="truncate text-xs text-muted">({u.username})</span>
+                    </div>
+                    <UserActions
+                      user={u}
+                      currentUserId={currentUserId}
+                      onEdit={setEditing}
+                      onDelete={setDeleting}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <UserFormModal
         open={createOpen}
@@ -164,7 +314,7 @@ export function UsersManager({
           onConfirm={() => deleteMutation.mutate(deleting.id)}
           loading={deleteMutation.isPending}
           title="Kullanıcıyı sil"
-          description={`"${deleting.name}" (${deleting.email}) hesabını kalıcı olarak silmek istediğinize emin misiniz?`}
+          description={`"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz?`}
           confirmLabel="Sil"
           danger
         />

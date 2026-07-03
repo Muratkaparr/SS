@@ -105,7 +105,7 @@ export class ProductsController {
   }
 
   @Post(':id/image')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.PLATFORM_ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({

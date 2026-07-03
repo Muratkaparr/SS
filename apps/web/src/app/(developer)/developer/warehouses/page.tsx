@@ -1,14 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Boxes, Building2, MapPin, Plus, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  Boxes,
+  Building2,
+  ChevronRight,
+  MapPin,
+  Plus,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { WarehouseFormModal } from '@/components/developer/warehouse-form-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TableSkeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
 import type { Warehouse } from '@/lib/types';
 
@@ -20,8 +30,19 @@ function formatDate(iso: string) {
   });
 }
 
+interface OwnerGroup {
+  ownerId: string;
+  ownerName: string;
+  warehouses: Warehouse[];
+  productCount: number;
+  criticalCount: number;
+  /** Admin'in ekip büyüklüğü — her deposunda aynı değer tekrarlanır, o yüzden toplanmaz. */
+  userCount: number;
+}
+
 export default function DeveloperWarehousesPage() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const { data: warehouses, isLoading } = useQuery({
     queryKey: ['warehouses'],
@@ -37,13 +58,51 @@ export default function DeveloperWarehousesPage() {
     { products: 0, critical: 0, users: 0 },
   );
 
+  /** Depoları sahibi olan Admin'e göre grupla — her Admin kendi sekmesinde. */
+  const groups = useMemo<OwnerGroup[]>(() => {
+    if (!warehouses) return [];
+    const byOwner = new Map<string, OwnerGroup>();
+    for (const w of warehouses) {
+      let group = byOwner.get(w.ownerId);
+      if (!group) {
+        group = {
+          ownerId: w.ownerId,
+          ownerName: w.ownerName ?? 'Bilinmeyen Admin',
+          warehouses: [],
+          productCount: 0,
+          criticalCount: 0,
+          userCount: w.userCount,
+        };
+        byOwner.set(w.ownerId, group);
+      }
+      group.warehouses.push(w);
+      group.productCount += w.productCount;
+      group.criticalCount += w.criticalCount;
+    }
+    return Array.from(byOwner.values()).sort((a, b) =>
+      a.ownerName.localeCompare(b.ownerName, 'tr'),
+    );
+  }, [warehouses]);
+
+  function toggle(ownerId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(ownerId)) {
+        next.delete(ownerId);
+      } else {
+        next.add(ownerId);
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">Depolar</h1>
           <p className="mt-1 text-sm text-muted">
-            Sistemdeki tüm depoların toplu görünümü — her deponun içeriği ve ekibi farklıdır.
+            Depolar, sahibi olan Admin'e göre gruplanır — bir Admin'in depolarını görmek için üzerine tıklayın.
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
@@ -84,52 +143,125 @@ export default function DeveloperWarehousesPage() {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {warehouses.map((w) => (
-            <Link
-              key={w.id}
-              href={`/developer/warehouses/${w.id}`}
-              className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 transition-colors duration-150 ease-out-quart hover:border-primary/40 hover:bg-surface-hover"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/15 text-primary">
-                  <Building2 size={17} />
-                </div>
-                {w.criticalCount > 0 && (
-                  <Badge tone="warning">{w.criticalCount} kritik</Badge>
+        <div className="space-y-3">
+          {groups.map((g) => {
+            const isOpen = expanded.has(g.ownerId);
+            return (
+              <div key={g.ownerId} className="rounded-md border border-border bg-surface">
+                <button
+                  type="button"
+                  onClick={() => toggle(g.ownerId)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-150 ease-out-quart hover:bg-surface-hover"
+                >
+                  <div className="flex items-center gap-3">
+                    <ChevronRight
+                      size={16}
+                      className={cn(
+                        'shrink-0 text-muted transition-transform duration-150 ease-out-quart',
+                        isOpen && 'rotate-90',
+                      )}
+                    />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-accent/15 text-accent">
+                      <UserRound size={17} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-ink">{g.ownerName}</p>
+                        <Badge tone="accent" withIcon={false}>
+                          {g.productCount} ürün
+                        </Badge>
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {g.warehouses.length} depo · {g.userCount} kullanıcı
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {g.criticalCount > 0 && <Badge tone="warning">{g.criticalCount} kritik</Badge>}
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {/* Sanal "toplam" kartı — gerçek bir depo değil, bu Admin'in tüm depolarının birleşik görünümüne götürür. */}
+                    <Link
+                      href={`/developer/warehouses/${g.ownerId}?owner=all`}
+                      className="flex flex-col gap-3 rounded-md border border-accent/30 bg-accent/5 p-4 transition-colors duration-150 ease-out-quart hover:border-accent/60 hover:bg-accent/10"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-accent/15 text-accent">
+                          <Boxes size={17} />
+                        </div>
+                        {g.criticalCount > 0 && <Badge tone="warning">{g.criticalCount} kritik</Badge>}
+                      </div>
+                      <div>
+                        <p className="font-medium text-ink">Bütün Depolar</p>
+                        <p className="mt-0.5 text-xs text-muted">{g.warehouses.length} depo dahil</p>
+                      </div>
+                      <div className="mt-1 flex items-center gap-4 border-t border-accent/20 pt-3 text-xs text-muted">
+                        <span className="flex items-center gap-1">
+                          <Boxes size={13} />
+                          {g.productCount} ürün
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Users size={13} />
+                          {g.userCount} kullanıcı
+                        </span>
+                        {g.criticalCount > 0 && (
+                          <span className="flex items-center gap-1 text-warning">
+                            <AlertTriangle size={13} />
+                            {g.criticalCount}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                    {g.warehouses.map((w) => (
+                      <Link
+                        key={w.id}
+                        href={`/developer/warehouses/${w.id}`}
+                        className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 p-4 transition-colors duration-150 ease-out-quart hover:border-primary/40 hover:bg-surface-hover"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/15 text-primary">
+                            <Building2 size={17} />
+                          </div>
+                          {w.criticalCount > 0 && (
+                            <Badge tone="warning">{w.criticalCount} kritik</Badge>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-ink">{w.name}</p>
+                          {w.location && (
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+                              <MapPin size={11} />
+                              {w.location}
+                            </p>
+                          )}
+                        </div>
+                        <div className="mt-1 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted">
+                          <span className="flex items-center gap-1">
+                            <Boxes size={13} />
+                            {w.productCount} ürün
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users size={13} />
+                            {w.userCount} kullanıcı
+                          </span>
+                          {w.criticalCount > 0 && (
+                            <span className="flex items-center gap-1 text-warning">
+                              <AlertTriangle size={13} />
+                              {w.criticalCount}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted">Oluşturulma: {formatDate(w.createdAt)}</p>
+                      </Link>
+                    ))}
+                  </div>
                 )}
               </div>
-              <div>
-                <p className="font-medium text-ink">{w.name}</p>
-                {w.ownerName && (
-                  <p className="mt-0.5 text-xs text-accent">Sahip: {w.ownerName}</p>
-                )}
-                {w.location && (
-                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
-                    <MapPin size={11} />
-                    {w.location}
-                  </p>
-                )}
-              </div>
-              <div className="mt-1 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted">
-                <span className="flex items-center gap-1">
-                  <Boxes size={13} />
-                  {w.productCount} ürün
-                </span>
-                <span className="flex items-center gap-1">
-                  <Users size={13} />
-                  {w.userCount} kullanıcı
-                </span>
-                {w.criticalCount > 0 && (
-                  <span className="flex items-center gap-1 text-warning">
-                    <AlertTriangle size={13} />
-                    {w.criticalCount}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted">Oluşturulma: {formatDate(w.createdAt)}</p>
-            </Link>
-          ))}
+            );
+          })}
         </div>
       )}
 

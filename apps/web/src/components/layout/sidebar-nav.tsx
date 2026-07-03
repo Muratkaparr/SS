@@ -36,6 +36,7 @@ const NAV_ITEMS: Record<PanelKey, NavItem[]> = {
   ],
   developer: [
     { href: '/developer', label: 'Genel Bakış', icon: LayoutDashboard },
+    { href: '/developer/products', label: 'Ürünler', icon: Package },
     { href: '/developer/warehouses', label: 'Depolar', icon: Building2 },
     { href: '/developer/users', label: 'Kullanıcılar', icon: Users },
     { href: '/developer/logs', label: 'Sistem Logları', icon: ScrollText },
