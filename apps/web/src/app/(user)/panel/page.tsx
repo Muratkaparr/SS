@@ -51,6 +51,7 @@ export default async function UserDashboardPage() {
           <Table>
             <Thead>
               <Th>Ürün</Th>
+              <Th>Depo</Th>
               <Th>Kategori</Th>
               <Th>Mevcut Stok</Th>
               <Th>Kritik Seviye</Th>
@@ -61,6 +62,7 @@ export default async function UserDashboardPage() {
               {alerts.map((alert) => (
                 <Tr key={alert.id}>
                   <Td className="font-medium">{alert.name}</Td>
+                  <Td className="text-muted">{alert.warehouseName ?? '—'}</Td>
                   <Td className="text-muted">{alert.category ?? '—'}</Td>
                   <Td>
                     {alert.currentStock} {alert.unit}

@@ -154,7 +154,10 @@ export class StockService {
 
     const products = await this.prisma.product.findMany({
       where: { ...warehouseFilter, criticalLevel: { gt: 0 } },
-      include: { category: { select: { name: true } } },
+      include: {
+        category: { select: { name: true } },
+        warehouse: { select: { id: true, name: true } },
+      },
       orderBy: { currentStock: 'asc' },
     });
     return products
@@ -164,6 +167,8 @@ export class StockService {
         name: p.name,
         unit: p.unit,
         category: p.category?.name ?? null,
+        warehouseId: p.warehouseId,
+        warehouseName: p.warehouse?.name ?? null,
         currentStock: p.currentStock,
         criticalLevel: p.criticalLevel,
         avgDailyConsumption7d: p.avgDailyConsumption7d,

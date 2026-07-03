@@ -54,6 +54,8 @@ export interface StockAlert {
   name: string;
   unit: string;
   category: string | null;
+  warehouseId: string;
+  warehouseName: string | null;
   currentStock: number;
   criticalLevel: number;
   avgDailyConsumption7d: number;

@@ -62,6 +62,7 @@ export function AdminDashboard() {
           <Table>
             <Thead>
               <Th>Ürün</Th>
+              <Th>Depo</Th>
               <Th>Mevcut Stok</Th>
               <Th>Kritik Seviye</Th>
               <Th>Tükenmeye Kalan</Th>
@@ -72,6 +73,7 @@ export function AdminDashboard() {
               {alerts.map((alert) => (
                 <Tr key={alert.id}>
                   <Td className="font-medium">{alert.name}</Td>
+                  <Td className="text-muted">{alert.warehouseName ?? '—'}</Td>
                   <Td>
                     {alert.currentStock} {alert.unit}
                   </Td>
