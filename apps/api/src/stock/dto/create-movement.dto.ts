@@ -9,7 +9,7 @@ export class CreateMovementDto {
   type!: MovementType;
 
   @IsInt()
-  @Min(1)
+  @Min(0)
   quantity!: number;
 
   @IsOptional()

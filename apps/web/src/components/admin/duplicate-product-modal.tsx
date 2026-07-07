@@ -2,12 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input, Label, Select } from '@/components/ui/input';
+import { FieldError, Input, Label, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { clientFetch } from '@/lib/client-fetch';
 import type { Product, Warehouse } from '@/lib/types';
+
+const schema = z.object({
+  targetWarehouseId: z.string().min(1, 'Bir depo seçin'),
+  openingStock: z.coerce.number().min(0).optional(),
+});
+
+type FormInput = z.input<typeof schema>;
+type FormValues = z.output<typeof schema>;
 
 export function DuplicateProductModal({
   product,
@@ -19,9 +30,7 @@ export function DuplicateProductModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [targetWarehouseId, setTargetWarehouseId] = useState('');
-  const [openingStock, setOpeningStock] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -31,22 +40,31 @@ export function DuplicateProductModal({
 
   const otherWarehouses = warehouses?.filter((w) => w.id !== product.warehouseId) ?? [];
 
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormInput, unknown, FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { targetWarehouseId: '', openingStock: 0 },
+  });
+
   useEffect(() => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- form state must resync each time the modal reopens for a different product
-      setTargetWarehouseId('');
-      setOpeningStock('');
-      setError(null);
+      setServerError(null);
+      reset({ targetWarehouseId: '', openingStock: 0 });
     }
-  }, [open]);
+  }, [open, reset]);
 
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (values: FormValues) =>
       clientFetch(`/products/${product.id}/duplicate`, {
         method: 'POST',
         body: JSON.stringify({
-          targetWarehouseId,
-          openingStock: openingStock ? Number(openingStock) : undefined,
+          targetWarehouseId: values.targetWarehouseId,
+          openingStock: values.openingStock || undefined,
         }),
       }),
     onSuccess: () => {
@@ -55,29 +73,24 @@ export function DuplicateProductModal({
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       onClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setServerError(err.message),
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!targetWarehouseId) {
-      setError('Bir depo seçin');
-      return;
-    }
-    mutation.mutate();
+  function onSubmit(values: FormValues) {
+    setServerError(null);
+    mutation.mutate(values);
   }
 
   return (
     <Modal open={open} onClose={onClose} title={`Başka Depoya Ekle — ${product.name}`} className="max-w-sm">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <p className="text-sm text-muted">
           <span className="font-medium text-ink">{product.name}</span> ürünü, seçtiğiniz depoya aynı
           bilgilerle (stok sıfırdan) eklenecek.
         </p>
 
-        {error && (
-          <p className="rounded-sm bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
+        {serverError && (
+          <p className="rounded-sm bg-danger/10 px-3 py-2 text-sm text-danger">{serverError}</p>
         )}
 
         {otherWarehouses.length === 0 ? (
@@ -88,11 +101,7 @@ export function DuplicateProductModal({
           <>
             <div>
               <Label htmlFor="dup-warehouse">Hedef Depo</Label>
-              <Select
-                id="dup-warehouse"
-                value={targetWarehouseId}
-                onChange={(e) => setTargetWarehouseId(e.target.value)}
-              >
+              <Select id="dup-warehouse" {...register('targetWarehouseId')}>
                 <option value="">Depo seçin…</option>
                 {otherWarehouses.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -100,17 +109,11 @@ export function DuplicateProductModal({
                   </option>
                 ))}
               </Select>
+              <FieldError>{errors.targetWarehouseId?.message}</FieldError>
             </div>
             <div>
               <Label htmlFor="dup-opening">Açılış Stoğu (opsiyonel)</Label>
-              <Input
-                id="dup-opening"
-                type="number"
-                min={0}
-                value={openingStock}
-                onChange={(e) => setOpeningStock(e.target.value)}
-                placeholder="0"
-              />
+              <Input id="dup-opening" type="number" min={0} placeholder="0" {...register('openingStock')} />
             </div>
           </>
         )}
@@ -119,7 +122,11 @@ export function DuplicateProductModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Vazgeç
           </Button>
-          <Button type="submit" loading={mutation.isPending} disabled={otherWarehouses.length === 0}>
+          <Button
+            type="submit"
+            loading={isSubmitting || mutation.isPending}
+            disabled={otherWarehouses.length === 0}
+          >
             Ekle
           </Button>
         </div>

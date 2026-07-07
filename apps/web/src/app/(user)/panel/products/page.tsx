@@ -12,15 +12,15 @@ export default function UserProductsPage() {
       <div>
         <h1 className="text-xl font-semibold text-ink">Ürünler</h1>
         <p className="mt-1 text-sm text-muted">
-          Depolar arasında sekmelerle geçiş yapın. Kartlardaki +/− ile stok miktarını
-          güncelleyebilirsiniz.
+          Depolar arasında sekmelerle geçiş yapın. Bu görünüm salt okunur — düzenleme yetkiniz
+          bulunmuyor.
         </p>
       </div>
 
       <WarehouseTabs activeId={activeWarehouseId} onChange={setActiveWarehouseId} />
 
       {activeWarehouseId && (
-        <ProductsExplorer view="grid" canAdjustStock fixedWarehouseId={activeWarehouseId} />
+        <ProductsExplorer view="grid" fixedWarehouseId={activeWarehouseId} />
       )}
     </div>
   );

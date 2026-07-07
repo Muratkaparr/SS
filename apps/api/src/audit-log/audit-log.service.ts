@@ -29,28 +29,58 @@ export class AuditLogService {
     limit: number;
     resource?: string;
     userId?: string;
+    /** ISO tarih — bu tarihten itibaren (dahil). */
+    from?: string;
+    /** ISO tarih — bu tarihe kadar (dahil). */
+    to?: string;
     /** Sadece bu rol(ler)deki kullanıcıların işlemleri getirilir (ör. Admin panelinden "Kullanıcı Aktiviteleri" görünümü). */
     actorRoles?: Role[];
     /** Sadece bu Admin'in ekibindeki kullanıcıların işlemleri getirilir. */
     adminOwnerId?: string;
+    /** Ekip filtresine ek olarak bu kullanıcının (genelde isteği yapan Admin'in) kendi işlemleri de dahil edilir. */
+    includeOwnActionsFor?: string;
   }) {
-    const { page, limit, resource, userId, actorRoles, adminOwnerId } = params;
+    const {
+      page,
+      limit,
+      resource,
+      userId,
+      from,
+      to,
+      actorRoles,
+      adminOwnerId,
+      includeOwnActionsFor,
+    } = params;
     const hasUserFilter =
       (actorRoles && actorRoles.length > 0) || !!adminOwnerId;
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    if (toDate) toDate.setHours(23, 59, 59, 999);
+    const teamFilter = {
+      user: {
+        is: {
+          ...(actorRoles && actorRoles.length > 0
+            ? { role: { in: actorRoles } }
+            : {}),
+          ...(adminOwnerId ? { adminOwnerId } : {}),
+        },
+      },
+    };
     const where = {
       ...(resource ? { resource } : {}),
       ...(userId ? { userId } : {}),
-      ...(hasUserFilter
+      ...(fromDate || toDate
         ? {
-            user: {
-              is: {
-                ...(actorRoles && actorRoles.length > 0
-                  ? { role: { in: actorRoles } }
-                  : {}),
-                ...(adminOwnerId ? { adminOwnerId } : {}),
-              },
+            createdAt: {
+              ...(fromDate ? { gte: fromDate } : {}),
+              ...(toDate ? { lte: toDate } : {}),
             },
           }
+        : {}),
+      ...(hasUserFilter
+        ? includeOwnActionsFor
+          ? { OR: [teamFilter, { userId: includeOwnActionsFor }] }
+          : teamFilter
         : {}),
     };
     const [items, total] = await Promise.all([

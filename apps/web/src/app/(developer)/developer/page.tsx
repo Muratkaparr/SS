@@ -17,13 +17,13 @@ function formatDateTime(iso: string) {
 }
 
 export default async function DeveloperHomePage() {
-  const [users, warehouses, logs] = await Promise.all([
-    serverFetch<PublicUser[]>('/users'),
+  const [usersData, warehouses, logs] = await Promise.all([
+    serverFetch<Paginated<PublicUser>>('/users?limit=200'),
     serverFetch<Warehouse[]>('/warehouses'),
     serverFetch<Paginated<AuditLogEntry>>('/audit-logs?limit=8'),
   ]);
 
-  const activeUsers = users.filter((u) => u.isActive).length;
+  const activeUsers = usersData.items.filter((u) => u.isActive).length;
   const totalProducts = warehouses.reduce((sum, w) => sum + w.productCount, 0);
   const totalCritical = warehouses.reduce((sum, w) => sum + w.criticalCount, 0);
 

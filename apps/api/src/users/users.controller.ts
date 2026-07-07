@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
@@ -25,8 +26,17 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  findAll(@CurrentUser() actor: User) {
-    return this.usersService.findAll(actor);
+  findAll(
+    @CurrentUser() actor: User,
+    @Query('page') page = '1',
+    @Query('limit') limit = '100',
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.findAll(actor, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 100,
+      search,
+    });
   }
 
   @Post()

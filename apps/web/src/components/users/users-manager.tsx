@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, ShieldCheck, Trash2, UserRound, Users as UsersIcon } from 'lucide-react';
+import { Pencil, Plus, Search, ShieldCheck, Trash2, UserRound, Users as UsersIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PublicUser } from '@repo/shared-types';
 import { UserFormModal } from '@/components/users/user-form-modal';
@@ -10,10 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@/components/ui/table';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
+import type { Paginated } from '@/lib/types';
 
 const ROLE_LABEL: Record<string, string> = {
   USER: 'Kullanıcı',
@@ -75,11 +77,21 @@ export function UsersManager({
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<PublicUser | null>(null);
   const [deleting, setDeleting] = useState<PublicUser | null>(null);
+  const [search, setSearch] = useState('');
 
-  const { data: users, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['users', restrictToUserRole ?? 'all'],
-    queryFn: () => clientFetch<PublicUser[]>('/users'),
+    queryFn: () => clientFetch<Paginated<PublicUser>>('/users?limit=200'),
   });
+  const users = data?.items;
+
+  const searchedUsers = useMemo(() => {
+    if (!users || !restrictToUserRole || !search.trim()) return users;
+    const q = search.trim().toLowerCase();
+    return users.filter(
+      (u) => u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q),
+    );
+  }, [users, restrictToUserRole, search]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => clientFetch(`/users/${id}`, { method: 'DELETE' }),
@@ -117,15 +129,28 @@ export function UsersManager({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">{title}</h1>
           <p className="mt-1 text-sm text-muted">{description}</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus size={16} />
-          Yeni Kullanıcı
-        </Button>
+        <div className="flex items-center gap-2">
+          {restrictToUserRole && (
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Ad veya kullanıcı adı ara…"
+                className="w-56 pl-8"
+              />
+            </div>
+          )}
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={16} />
+            Yeni Kullanıcı
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -142,6 +167,9 @@ export function UsersManager({
         </div>
       ) : restrictToUserRole ? (
         <div className="rounded-md border border-border bg-surface">
+          {!searchedUsers || searchedUsers.length === 0 ? (
+            <EmptyState icon={Search} title="Aramanızla eşleşen kullanıcı yok" />
+          ) : (
           <Table>
             <Thead>
               <Th>Ad Soyad</Th>
@@ -150,7 +178,7 @@ export function UsersManager({
               <Th className="text-right">İşlemler</Th>
             </Thead>
             <Tbody>
-              {users.map((u) => {
+              {searchedUsers.map((u) => {
                 const isSelf = u.id === currentUserId;
                 return (
                   <Tr key={u.id}>
@@ -186,6 +214,7 @@ export function UsersManager({
               })}
             </Tbody>
           </Table>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -314,7 +343,11 @@ export function UsersManager({
           onConfirm={() => deleteMutation.mutate(deleting.id)}
           loading={deleteMutation.isPending}
           title="Kullanıcıyı sil"
-          description={`"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz?`}
+          description={
+            deleting.role === 'ADMIN'
+              ? `"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz? Bu Admin'e ait tüm depolar ve içindeki ürünler de silinecek.`
+              : `"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz?`
+          }
           confirmLabel="Sil"
           danger
         />

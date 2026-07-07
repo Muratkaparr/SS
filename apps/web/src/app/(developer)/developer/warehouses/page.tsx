@@ -2,20 +2,24 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Boxes,
   Building2,
   ChevronRight,
   MapPin,
+  Pencil,
   Plus,
+  Trash2,
   UserRound,
   Users,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { WarehouseFormModal } from '@/components/developer/warehouse-form-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/cn';
@@ -41,12 +45,28 @@ interface OwnerGroup {
 }
 
 export default function DeveloperWarehousesPage() {
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Warehouse | null>(null);
+  const [deleting, setDeleting] = useState<Warehouse | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const { data: warehouses, isLoading } = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => clientFetch<Warehouse[]>('/warehouses'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => clientFetch(`/warehouses/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Depo silindi');
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      setDeleting(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setDeleting(null);
+    },
   });
 
   const totals = warehouses?.reduce(
@@ -216,46 +236,71 @@ export default function DeveloperWarehousesPage() {
                       </div>
                     </Link>
                     {g.warehouses.map((w) => (
-                      <Link
-                        key={w.id}
-                        href={`/developer/warehouses/${w.id}`}
-                        className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 p-4 transition-colors duration-150 ease-out-quart hover:border-primary/40 hover:bg-surface-hover"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/15 text-primary">
-                            <Building2 size={17} />
+                      <div key={w.id} className="group relative">
+                        <Link
+                          href={`/developer/warehouses/${w.id}`}
+                          className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 p-4 transition-colors duration-150 ease-out-quart hover:border-primary/40 hover:bg-surface-hover"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/15 text-primary">
+                              <Building2 size={17} />
+                            </div>
+                            {w.criticalCount > 0 && (
+                              <Badge tone="warning">{w.criticalCount} kritik</Badge>
+                            )}
                           </div>
-                          {w.criticalCount > 0 && (
-                            <Badge tone="warning">{w.criticalCount} kritik</Badge>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium text-ink">{w.name}</p>
-                          {w.location && (
-                            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
-                              <MapPin size={11} />
-                              {w.location}
-                            </p>
-                          )}
-                        </div>
-                        <div className="mt-1 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted">
-                          <span className="flex items-center gap-1">
-                            <Boxes size={13} />
-                            {w.productCount} ürün
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Users size={13} />
-                            {w.userCount} kullanıcı
-                          </span>
-                          {w.criticalCount > 0 && (
-                            <span className="flex items-center gap-1 text-warning">
-                              <AlertTriangle size={13} />
-                              {w.criticalCount}
+                          <div>
+                            <p className="pr-16 font-medium text-ink">{w.name}</p>
+                            {w.location && (
+                              <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+                                <MapPin size={11} />
+                                {w.location}
+                              </p>
+                            )}
+                          </div>
+                          <div className="mt-1 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted">
+                            <span className="flex items-center gap-1">
+                              <Boxes size={13} />
+                              {w.productCount} ürün
                             </span>
-                          )}
+                            <span className="flex items-center gap-1">
+                              <Users size={13} />
+                              {w.userCount} kullanıcı
+                            </span>
+                            {w.criticalCount > 0 && (
+                              <span className="flex items-center gap-1 text-warning">
+                                <AlertTriangle size={13} />
+                                {w.criticalCount}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted">Oluşturulma: {formatDate(w.createdAt)}</p>
+                        </Link>
+                        <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity duration-150 ease-out-quart group-hover:opacity-100 focus-within:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setEditing(w);
+                            }}
+                            title="Depoyu düzenle"
+                            className="flex h-7 w-7 items-center justify-center rounded-sm bg-surface text-muted shadow-sm transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-ink"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setDeleting(w);
+                            }}
+                            title="Depoyu sil"
+                            className="flex h-7 w-7 items-center justify-center rounded-sm bg-surface text-muted shadow-sm transition-colors duration-150 ease-out-quart hover:bg-danger/10 hover:text-danger"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
-                        <p className="text-[11px] text-muted">Oluşturulma: {formatDate(w.createdAt)}</p>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -266,6 +311,21 @@ export default function DeveloperWarehousesPage() {
       )}
 
       <WarehouseFormModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      {editing && (
+        <WarehouseFormModal open={!!editing} onClose={() => setEditing(null)} warehouse={editing} />
+      )}
+      {deleting && (
+        <ConfirmModal
+          open={!!deleting}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => deleteMutation.mutate(deleting.id)}
+          loading={deleteMutation.isPending}
+          title="Depoyu sil"
+          description={`"${deleting.name}" deposunu ve içindeki ${deleting.productCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`}
+          confirmLabel="Sil"
+          danger
+        />
+      )}
     </div>
   );
 }

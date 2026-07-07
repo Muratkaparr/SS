@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -45,16 +44,31 @@ export class StockService {
   }
 
   async createMovement(dto: CreateMovementDto, actor: User) {
-    if (actor.role === 'USER' && dto.type === MovementType.ADJUSTMENT) {
-      throw new ForbiddenException(
-        'Kullanıcılar sadece stok girişi/çıkışı yapabilir, sayım düzeltmesi admin yetkisi gerektirir',
+    const product = await this.getOwnedProduct(dto.productId, actor);
+
+    if (dto.type !== MovementType.ADJUSTMENT && dto.quantity < 1) {
+      throw new BadRequestException(
+        'Giriş/çıkış hareketlerinde adet en az 1 olmalı',
       );
     }
 
-    const product = await this.getOwnedProduct(dto.productId, actor);
+    let delta: number;
+    let nextStock: number;
+    let reason = dto.reason;
 
-    const delta = dto.type === MovementType.OUT ? -dto.quantity : dto.quantity;
-    const nextStock = product.currentStock + delta;
+    if (dto.type === MovementType.ADJUSTMENT) {
+      // "Düzeltme (sayım)" girilen değeri delta değil, yeni mutlak stok toplamı olarak yorumlar.
+      delta = dto.quantity - product.currentStock;
+      nextStock = dto.quantity;
+      const deltaLabel = `${delta >= 0 ? '+' : ''}${delta}`;
+      reason = dto.reason
+        ? `${dto.reason} (yeni toplam: ${dto.quantity}, değişim: ${deltaLabel})`
+        : `Sayım düzeltmesi — yeni toplam: ${dto.quantity} (değişim: ${deltaLabel})`;
+    } else {
+      delta = dto.type === MovementType.OUT ? -dto.quantity : dto.quantity;
+      nextStock = product.currentStock + delta;
+    }
+
     if (nextStock < 0) {
       throw new BadRequestException(
         `Yetersiz stok: mevcut ${product.currentStock}, çıkarılmak istenen ${dto.quantity}`,
@@ -66,8 +80,8 @@ export class StockService {
         data: {
           productId: dto.productId,
           type: dto.type,
-          quantity: dto.quantity,
-          reason: dto.reason,
+          quantity: Math.abs(delta),
+          reason,
           userId: actor.id,
         },
       });
@@ -86,7 +100,7 @@ export class StockService {
       meta: {
         productId: dto.productId,
         type: dto.type,
-        quantity: dto.quantity,
+        quantity: movement.quantity,
       },
     });
 

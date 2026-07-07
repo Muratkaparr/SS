@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, CalendarClock, Clock, ScrollText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,10 @@ const ACTION_LABEL: Record<string, string> = {
 const RESOURCE_LABEL: Record<string, string> = {
   STOCK_MOVEMENT: 'Stok Hareketi',
   PRODUCT: 'Ürün',
+  WAREHOUSE: 'Depo',
+  CATEGORY: 'Kategori',
+  USER: 'Kullanıcı',
+  AUTH: 'Oturum',
 };
 
 function formatDateTime(iso: string) {
@@ -39,9 +43,14 @@ function formatDateTime(iso: string) {
 }
 
 export default function AdminActivityPage() {
+  const [includeSelf, setIncludeSelf] = useState(false);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', 'user-activity'],
-    queryFn: () => clientFetch<Paginated<AuditLogEntry>>('/audit-logs?limit=200'),
+    queryKey: ['audit-logs', 'user-activity', includeSelf],
+    queryFn: () =>
+      clientFetch<Paginated<AuditLogEntry>>(
+        `/audit-logs?limit=200${includeSelf ? '&includeSelf=true' : ''}`,
+      ),
     refetchInterval: 30_000,
   });
 
@@ -69,12 +78,23 @@ export default function AdminActivityPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Kullanıcı Aktiviteleri</h1>
-        <p className="mt-1 text-sm text-muted">
-          Kullanıcı panelinde kimin ne zaman ne değiştirdiğinin kaydı — günlük, saatlik ve
-          dakikalık özet ile birlikte.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Kullanıcı Aktiviteleri</h1>
+          <p className="mt-1 text-sm text-muted">
+            Kullanıcı panelinde kimin ne zaman ne değiştirdiğinin kaydı — günlük, saatlik ve
+            dakikalık özet ile birlikte.
+          </p>
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={includeSelf}
+            onChange={(e) => setIncludeSelf(e.target.checked)}
+            className="h-4 w-4 rounded-sm border-border accent-primary"
+          />
+          Kendi işlemlerimi de göster
+        </label>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

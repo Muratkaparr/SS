@@ -20,19 +20,29 @@ export class AuditLogController {
     @Query('limit') limit = '25',
     @Query('resource') resource?: string,
     @Query('userId') userId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('includeSelf') includeSelf?: string,
   ) {
     // Admin, kendi ekibindeki "Kullanıcı" rolündeki hesapların aktivitelerini görür.
     // Platform Admin (Developer Paneli) sistemdeki her işlemi görür.
     const actorRoles =
       actor.role === 'ADMIN' ? (['USER'] satisfies PrismaRole[]) : undefined;
     const adminOwnerId = actor.role === 'ADMIN' ? actor.id : undefined;
+    // Varsayılan davranış değişmez: sadece "includeSelf=true" istendiğinde
+    // Admin'in kendi işlemleri de ekip aktivitelerine eklenir.
+    const includeOwnActionsFor =
+      actor.role === 'ADMIN' && includeSelf === 'true' ? actor.id : undefined;
     return this.auditLogService.findAll({
       page: Number(page) || 1,
       limit: Number(limit) || 25,
       resource,
       userId,
+      from,
+      to,
       actorRoles,
       adminOwnerId,
+      includeOwnActionsFor,
     });
   }
 }

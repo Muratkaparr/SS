@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { clientFetch } from '@/lib/client-fetch';
+import type { Paginated } from '@/lib/types';
 
 const ROLE_LABEL: Record<Role, string> = {
   [Role.USER]: 'Kullanıcı',
@@ -76,12 +77,12 @@ export function UserFormModal({
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const { data: users } = useQuery({
+  const { data: usersData } = useQuery({
     queryKey: ['users', 'all'],
-    queryFn: () => clientFetch<PublicUser[]>('/users'),
+    queryFn: () => clientFetch<Paginated<PublicUser>>('/users?limit=200'),
     enabled: open && !restrictToUserRole,
   });
-  const admins = users?.filter((u) => u.role === Role.ADMIN) ?? [];
+  const admins = usersData?.items.filter((u) => u.role === Role.ADMIN) ?? [];
 
   const createSchema = useMemo(() => buildCreateSchema(restrictToUserRole), [restrictToUserRole]);
   const editSchema = useMemo(() => buildEditSchema(restrictToUserRole), [restrictToUserRole]);

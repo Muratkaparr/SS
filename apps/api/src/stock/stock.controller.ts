@@ -65,7 +65,7 @@ export class StockController {
   }
 
   @Post('movements')
-  @Roles(Role.ADMIN, Role.USER)
+  @Roles(Role.ADMIN)
   createMovement(@Body() dto: CreateMovementDto, @CurrentUser() actor: User) {
     return this.stockService.createMovement(dto, actor);
   }

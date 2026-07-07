@@ -30,15 +30,35 @@ export class UsersService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  async findAll(actor: User) {
-    const users = await this.prisma.user.findMany({
-      where: isScopedAdmin(actor)
+  async findAll(
+    actor: User,
+    params: { page: number; limit: number; search?: string },
+  ) {
+    const { page, limit, search } = params;
+    const where = {
+      ...(isScopedAdmin(actor)
         ? { role: Role.USER, adminOwnerId: actor.id }
-        : {},
-      orderBy: { createdAt: 'asc' },
-      include: ADMIN_OWNER_SELECT,
-    });
-    return users.map(sanitizeUser);
+        : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search } },
+              { username: { contains: search } },
+            ],
+          }
+        : {}),
+    };
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        include: ADMIN_OWNER_SELECT,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    return { items: users.map(sanitizeUser), total, page, limit };
   }
 
   async create(dto: CreateUserDto, actor: User) {
@@ -221,6 +241,16 @@ export class UsersService {
       if (activeCount <= 1) {
         throw new BadRequestException(
           'Sistemde en az bir aktif Platform Admin kalmalı',
+        );
+      }
+    }
+    if (targetRole === Role.ADMIN) {
+      const managedUserCount = await this.prisma.user.count({
+        where: { adminOwnerId: target.id },
+      });
+      if (managedUserCount > 0) {
+        throw new ConflictException(
+          `Bu Admin'e bağlı ${managedUserCount} kullanıcı hesabı var, önce onları silin veya başka bir Admin'e taşıyın`,
         );
       }
     }

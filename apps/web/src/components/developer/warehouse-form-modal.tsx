@@ -11,43 +11,60 @@ import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { clientFetch } from '@/lib/client-fetch';
+import type { Paginated, Warehouse } from '@/lib/types';
 
-const schema = z.object({
+const createSchema = z.object({
   name: z.string().min(2, 'Depo adı en az 2 karakter olmalı'),
   location: z.string().optional(),
   ownerId: z.string().min(1, 'Bir Admin seçilmeli'),
 });
 
-type FormValues = z.infer<typeof schema>;
+const editSchema = z.object({
+  name: z.string().min(2, 'Depo adı en az 2 karakter olmalı'),
+  location: z.string().optional(),
+});
 
-export function WarehouseFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+type CreateValues = z.infer<typeof createSchema>;
+type EditValues = z.infer<typeof editSchema>;
+
+export function WarehouseFormModal({
+  open,
+  onClose,
+  warehouse,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Doluysa düzenleme modu — sadece isim/konum değiştirilebilir, sahip değiştirilemez. */
+  warehouse?: Warehouse;
+}) {
+  const isEdit = !!warehouse;
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const { data: users } = useQuery({
+  const { data: usersData } = useQuery({
     queryKey: ['users', 'all'],
-    queryFn: () => clientFetch<PublicUser[]>('/users'),
-    enabled: open,
+    queryFn: () => clientFetch<Paginated<PublicUser>>('/users?limit=200'),
+    enabled: open && !isEdit,
   });
-  const admins = users?.filter((u) => u.role === 'ADMIN') ?? [];
+  const admins = usersData?.items.filter((u) => u.role === 'ADMIN') ?? [];
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const createForm = useForm<CreateValues>({ resolver: zodResolver(createSchema) });
+  const editForm = useForm<EditValues>({ resolver: zodResolver(editSchema) });
 
   useEffect(() => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- modal her açıldığında formu sıfırla
       setServerError(null);
-      reset({ name: '', location: '', ownerId: '' });
+      if (warehouse) {
+        editForm.reset({ name: warehouse.name, location: warehouse.location ?? '' });
+      } else {
+        createForm.reset({ name: '', location: '', ownerId: '' });
+      }
     }
-  }, [open, reset]);
+  }, [open, warehouse]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const mutation = useMutation({
-    mutationFn: (values: FormValues) =>
+  const createMutation = useMutation({
+    mutationFn: (values: CreateValues) =>
       clientFetch('/warehouses', { method: 'POST', body: JSON.stringify(values) }),
     onSuccess: () => {
       toast.success('Depo oluşturuldu');
@@ -57,48 +74,93 @@ export function WarehouseFormModal({ open, onClose }: { open: boolean; onClose: 
     onError: (err: Error) => setServerError(err.message),
   });
 
+  const editMutation = useMutation({
+    mutationFn: (values: EditValues) =>
+      clientFetch(`/warehouses/${warehouse!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(values),
+      }),
+    onSuccess: () => {
+      toast.success('Depo güncellendi');
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      onClose();
+    },
+    onError: (err: Error) => setServerError(err.message),
+  });
+
   return (
-    <Modal open={open} onClose={onClose} title="Yeni Depo" className="max-w-sm">
-      <form
-        onSubmit={handleSubmit((v) => {
-          setServerError(null);
-          mutation.mutate(v);
-        })}
-        className="space-y-4"
-      >
-        {serverError && (
-          <p className="rounded-sm bg-danger/10 px-3 py-2 text-sm text-danger">{serverError}</p>
-        )}
-        <div>
-          <Label htmlFor="wh-owner">Admin</Label>
-          <Select id="wh-owner" {...register('ownerId')}>
-            <option value="">Admin seçin…</option>
-            {admins.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.username})
-              </option>
-            ))}
-          </Select>
-          <FieldError>{errors.ownerId?.message}</FieldError>
-        </div>
-        <div>
-          <Label htmlFor="wh-name">Depo Adı</Label>
-          <Input id="wh-name" placeholder="Örn. Güney Depo" {...register('name')} />
-          <FieldError>{errors.name?.message}</FieldError>
-        </div>
-        <div>
-          <Label htmlFor="wh-location">Konum (opsiyonel)</Label>
-          <Input id="wh-location" placeholder="Örn. İzmir, Türkiye" {...register('location')} />
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Vazgeç
-          </Button>
-          <Button type="submit" loading={isSubmitting || mutation.isPending}>
-            Depo Oluştur
-          </Button>
-        </div>
-      </form>
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Depoyu Düzenle' : 'Yeni Depo'} className="max-w-sm">
+      {isEdit ? (
+        <form
+          onSubmit={editForm.handleSubmit((v) => {
+            setServerError(null);
+            editMutation.mutate(v);
+          })}
+          className="space-y-4"
+        >
+          {serverError && (
+            <p className="rounded-sm bg-danger/10 px-3 py-2 text-sm text-danger">{serverError}</p>
+          )}
+          <div>
+            <Label htmlFor="wh-edit-name">Depo Adı</Label>
+            <Input id="wh-edit-name" {...editForm.register('name')} />
+            <FieldError>{editForm.formState.errors.name?.message}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="wh-edit-location">Konum (opsiyonel)</Label>
+            <Input id="wh-edit-location" {...editForm.register('location')} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Vazgeç
+            </Button>
+            <Button type="submit" loading={editForm.formState.isSubmitting || editMutation.isPending}>
+              Kaydet
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <form
+          onSubmit={createForm.handleSubmit((v) => {
+            setServerError(null);
+            createMutation.mutate(v);
+          })}
+          className="space-y-4"
+        >
+          {serverError && (
+            <p className="rounded-sm bg-danger/10 px-3 py-2 text-sm text-danger">{serverError}</p>
+          )}
+          <div>
+            <Label htmlFor="wh-owner">Admin</Label>
+            <Select id="wh-owner" {...createForm.register('ownerId')}>
+              <option value="">Admin seçin…</option>
+              {admins.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.username})
+                </option>
+              ))}
+            </Select>
+            <FieldError>{createForm.formState.errors.ownerId?.message}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="wh-name">Depo Adı</Label>
+            <Input id="wh-name" placeholder="Örn. Güney Depo" {...createForm.register('name')} />
+            <FieldError>{createForm.formState.errors.name?.message}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="wh-location">Konum (opsiyonel)</Label>
+            <Input id="wh-location" placeholder="Örn. İzmir, Türkiye" {...createForm.register('location')} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Vazgeç
+            </Button>
+            <Button type="submit" loading={createForm.formState.isSubmitting || createMutation.isPending}>
+              Depo Oluştur
+            </Button>
+          </div>
+        </form>
+      )}
     </Modal>
   );
 }

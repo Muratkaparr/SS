@@ -19,6 +19,8 @@ const schema = z.object({
   unit: z.string().min(1, 'Birim gerekli'),
   categoryId: z.string().optional(),
   criticalLevel: z.coerce.number().min(0),
+  leadTimeDays: z.coerce.number().min(1, 'En az 1 gün olmalı'),
+  safetyMarginDays: z.coerce.number().min(0),
   openingStock: z.coerce.number().min(0).optional(),
 });
 
@@ -67,6 +69,8 @@ export function ProductFormModal({
     defaultValues: {
       unit: 'adet',
       criticalLevel: 10,
+      leadTimeDays: 5,
+      safetyMarginDays: 3,
     },
   });
 
@@ -83,6 +87,8 @@ export function ProductFormModal({
               unit: product.unit,
               categoryId: product.categoryId ?? '',
               criticalLevel: product.criticalLevel,
+              leadTimeDays: product.leadTimeDays,
+              safetyMarginDays: product.safetyMarginDays,
             }
           : {
               name: '',
@@ -90,6 +96,8 @@ export function ProductFormModal({
               unit: 'adet',
               categoryId: '',
               criticalLevel: 10,
+              leadTimeDays: 5,
+              safetyMarginDays: 3,
               openingStock: 0,
             },
       );
@@ -201,6 +209,23 @@ export function ProductFormModal({
           <Input id="criticalLevel" type="number" min={0} {...register('criticalLevel')} />
           <FieldError>{errors.criticalLevel?.message}</FieldError>
         </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="leadTimeDays">Tedarik Süresi (gün)</Label>
+            <Input id="leadTimeDays" type="number" min={1} {...register('leadTimeDays')} />
+            <FieldError>{errors.leadTimeDays?.message}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="safetyMarginDays">Güvenlik Payı (gün)</Label>
+            <Input id="safetyMarginDays" type="number" min={0} {...register('safetyMarginDays')} />
+            <FieldError>{errors.safetyMarginDays?.message}</FieldError>
+          </div>
+        </div>
+        <p className="-mt-2 text-xs text-muted">
+          Kritik seviye önerisi bu iki değere göre hesaplanır: tedarikçiden ürün gelene kadar geçen
+          süre + ek güvenlik payı.
+        </p>
 
         {!isEdit && (
           <div>

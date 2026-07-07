@@ -1,3 +1,5 @@
+import { unlink } from 'fs/promises';
+import { join } from 'path';
 import {
   ConflictException,
   ForbiddenException,
@@ -16,6 +18,18 @@ import { StockService } from '../stock/stock.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { DuplicateProductDto } from './dto/duplicate-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+
+/** imageUrl "/uploads/products/xxx.png" formatında saklanır — diskteki karşılığını siler. */
+async function deleteImageFile(imageUrl: string | null | undefined) {
+  if (!imageUrl) return;
+  const relative = imageUrl.replace(/^\/uploads\//, '');
+  const absolute = join(__dirname, '..', '..', 'uploads', relative);
+  try {
+    await unlink(absolute);
+  } catch {
+    // Dosya zaten yoksa veya silinemiyorsa sessizce geç — kritik bir işlem değil.
+  }
+}
 
 @Injectable()
 export class ProductsService {
@@ -290,6 +304,7 @@ export class ProductsService {
   async remove(id: string, actor: User) {
     const target = await this.findOne(id, actor);
     await this.prisma.product.delete({ where: { id } });
+    await deleteImageFile(target.imageUrl);
     await this.auditLog.log({
       userId: actor.id,
       action: 'DELETE',
@@ -301,7 +316,8 @@ export class ProductsService {
   }
 
   async setImage(id: string, imageUrl: string, actor: User) {
-    await this.findOne(id, actor);
+    const target = await this.findOne(id, actor);
+    await deleteImageFile(target.imageUrl);
     await this.prisma.product.update({ where: { id }, data: { imageUrl } });
     await this.auditLog.log({
       userId: actor.id,
