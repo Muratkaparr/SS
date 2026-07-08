@@ -3,6 +3,7 @@ import type { PublicUser } from '@repo/shared-types';
 
 type UserWithAdminOwner = User & {
   adminOwner?: { id: string; name: string } | null;
+  warehouseAccess?: { warehouseId: string }[];
 };
 
 export function sanitizeUser(user: UserWithAdminOwner): PublicUser {
@@ -15,5 +16,7 @@ export function sanitizeUser(user: UserWithAdminOwner): PublicUser {
     createdAt: user.createdAt.toISOString(),
     adminOwnerId: user.adminOwnerId,
     adminOwnerName: user.adminOwner?.name ?? null,
+    rootAllWarehousesLabel: user.rootAllWarehousesLabel,
+    warehouseAccessIds: user.warehouseAccess?.map((g) => g.warehouseId) ?? [],
   };
 }

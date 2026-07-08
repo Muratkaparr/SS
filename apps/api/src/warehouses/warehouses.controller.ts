@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
@@ -16,6 +17,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { ReorderWarehousesDto } from './dto/reorder-warehouses.dto';
+import { UpdateRootLabelDto } from './dto/update-root-label.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { WarehousesService } from './warehouses.service';
 
@@ -25,14 +27,24 @@ export class WarehousesController {
   constructor(private readonly warehousesService: WarehousesService) {}
 
   @Get()
-  findAll(@CurrentUser() actor: User) {
-    return this.warehousesService.findAll(actor);
+  findAll(
+    @CurrentUser() actor: User,
+    @Query('parentId') parentId?: string,
+    @Query('ownerId') ownerId?: string,
+  ) {
+    return this.warehousesService.findAll(actor, parentId, ownerId);
   }
 
   @Patch('reorder')
   @Roles(Role.PLATFORM_ADMIN, Role.ADMIN)
   reorder(@Body() dto: ReorderWarehousesDto, @CurrentUser() actor: User) {
     return this.warehousesService.reorder(dto, actor);
+  }
+
+  @Patch('root-label')
+  @Roles(Role.ADMIN)
+  updateRootLabel(@Body() dto: UpdateRootLabelDto, @CurrentUser() actor: User) {
+    return this.warehousesService.updateRootLabel(actor, dto);
   }
 
   @Get(':id')

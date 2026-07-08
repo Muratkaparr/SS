@@ -39,6 +39,9 @@ describe('UsersService', () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
+    warehouse: { findMany: jest.Mock };
+    warehouseAccess: { deleteMany: jest.Mock; create: jest.Mock };
+    $transaction: jest.Mock;
   };
   let auditLog: { log: jest.Mock };
 
@@ -52,6 +55,12 @@ describe('UsersService', () => {
         update: jest.fn(),
         delete: jest.fn().mockResolvedValue({}),
       },
+      warehouse: { findMany: jest.fn().mockResolvedValue([]) },
+      warehouseAccess: {
+        deleteMany: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     auditLog = { log: jest.fn() };
 
@@ -106,6 +115,89 @@ describe('UsersService', () => {
       await expect(
         service.update('pa-1', { role: Role.ADMIN } as any, PLATFORM_ADMIN),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('updateWarehouseAccess', () => {
+    it('rejects assigning warehouse access to a non-USER account', async () => {
+      prisma.user.findUnique.mockResolvedValue(baseUser({ role: Role.ADMIN }));
+      await expect(
+        service.updateWarehouseAccess(
+          'target-1',
+          { warehouseIds: ['w1'] },
+          PLATFORM_ADMIN,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids a scoped Admin from assigning access outside their team', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        baseUser({ role: Role.USER, adminOwnerId: 'someone-else' }),
+      );
+      await expect(
+        service.updateWarehouseAccess(
+          'target-1',
+          { warehouseIds: [] },
+          SCOPED_ADMIN,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("rejects a warehouse not owned by the target's admin", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        baseUser({ role: Role.USER, adminOwnerId: 'admin-1' }),
+      );
+      prisma.warehouse.findMany.mockResolvedValue([
+        { id: 'w1', ownerId: 'someone-else' },
+      ]);
+      await expect(
+        service.updateWarehouseAccess(
+          'target-1',
+          { warehouseIds: ['w1'] },
+          SCOPED_ADMIN,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('clears access when given an empty array', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(
+          baseUser({ role: Role.USER, adminOwnerId: 'admin-1' }),
+        )
+        .mockResolvedValueOnce(
+          baseUser({ role: Role.USER, adminOwnerId: 'admin-1' }),
+        );
+      await service.updateWarehouseAccess(
+        'target-1',
+        { warehouseIds: [] },
+        SCOPED_ADMIN,
+      );
+      expect(prisma.warehouseAccess.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'target-1' },
+      });
+      expect(prisma.warehouseAccess.create).not.toHaveBeenCalled();
+    });
+
+    it('grants access to valid warehouses owned by the same admin', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(
+          baseUser({ role: Role.USER, adminOwnerId: 'admin-1' }),
+        )
+        .mockResolvedValueOnce(
+          baseUser({ role: Role.USER, adminOwnerId: 'admin-1' }),
+        );
+      prisma.warehouse.findMany.mockResolvedValue([
+        { id: 'w1', ownerId: 'admin-1' },
+      ]);
+      await service.updateWarehouseAccess(
+        'target-1',
+        { warehouseIds: ['w1'] },
+        SCOPED_ADMIN,
+      );
+      expect(prisma.warehouseAccess.create).toHaveBeenCalledWith({
+        data: { userId: 'target-1', warehouseId: 'w1' },
+      });
     });
   });
 

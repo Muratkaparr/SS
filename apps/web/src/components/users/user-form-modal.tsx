@@ -10,6 +10,7 @@ import { Role, type PublicUser } from '@repo/shared-types';
 import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
+import { WarehouseCheckTree } from '@/components/users/warehouse-check-tree';
 import { clientFetch } from '@/lib/client-fetch';
 import type { Paginated } from '@/lib/types';
 
@@ -76,6 +77,7 @@ export function UserFormModal({
   const isEdit = !!user;
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
 
   const { data: usersData } = useQuery({
     queryKey: ['users', 'all'],
@@ -105,16 +107,30 @@ export function UserFormModal({
           password: '',
           adminOwnerId: user.adminOwnerId ?? undefined,
         });
+        setWarehouseIds(user.warehouseAccessIds);
       } else {
         createForm.reset({ name: '', username: '', password: '', role: Role.USER, adminOwnerId: undefined });
+        setWarehouseIds([]);
       }
     }
   }, [open, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const warehouseAccessMutation = useMutation({
+    mutationFn: ({ id, ids }: { id: string; ids: string[] }) =>
+      clientFetch(`/users/${id}/warehouse-access`, {
+        method: 'PATCH',
+        body: JSON.stringify({ warehouseIds: ids }),
+      }),
+    onError: (err: Error) => toast.error(`Depo yetkisi kaydedilemedi: ${err.message}`),
+  });
+
   const createMutation = useMutation({
     mutationFn: (values: CreateValues) =>
-      clientFetch('/users', { method: 'POST', body: JSON.stringify(values) }),
-    onSuccess: () => {
+      clientFetch<{ id: string }>('/users', { method: 'POST', body: JSON.stringify(values) }),
+    onSuccess: async (created, values) => {
+      if (values.role === Role.USER && warehouseIds.length > 0) {
+        await warehouseAccessMutation.mutateAsync({ id: created.id, ids: warehouseIds });
+      }
       toast.success('Kullanıcı oluşturuldu');
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
@@ -128,7 +144,10 @@ export function UserFormModal({
         method: 'PATCH',
         body: JSON.stringify({ ...values, password: values.password || undefined }),
       }),
-    onSuccess: () => {
+    onSuccess: async (_, values) => {
+      if (values.role === Role.USER) {
+        await warehouseAccessMutation.mutateAsync({ id: user!.id, ids: warehouseIds });
+      }
       toast.success('Kullanıcı güncellendi');
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
@@ -139,6 +158,8 @@ export function UserFormModal({
   const roleFieldDisabled = isSelf || restrictToUserRole;
   const editRole = editForm.watch('role');
   const createRole = createForm.watch('role');
+  const editOwnerId = editForm.watch('adminOwnerId');
+  const createOwnerId = createForm.watch('adminOwnerId');
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Kullanıcıyı Düzenle' : 'Yeni Kullanıcı'} className="max-w-md">
@@ -198,8 +219,31 @@ export function UserFormModal({
           )}
           {restrictToUserRole && (
             <p className="rounded-sm bg-surface-2 px-3 py-2 text-xs text-muted">
-              Bu kullanıcı sizin ekibinize atanmıştır ve tüm depolarınızı görür.
+              Bu kullanıcı sizin ekibinize atanmıştır.
             </p>
+          )}
+          {(restrictToUserRole || editRole === Role.USER) && (
+            <div>
+              <Label>Depo Yetkisi</Label>
+              {restrictToUserRole || editOwnerId ? (
+                <>
+                  <WarehouseCheckTree
+                    ownerId={restrictToUserRole ? undefined : editOwnerId}
+                    selectedIds={warehouseIds}
+                    onChange={setWarehouseIds}
+                  />
+                  <p className="mt-1 text-xs text-muted">
+                    {warehouseIds.length === 0
+                      ? 'Hiç depo seçmezseniz kullanıcı tüm depo havuzunu görür.'
+                      : 'Seçilen depolar ve altındaki tüm alt depolarla sınırlanır.'}
+                  </p>
+                </>
+              ) : (
+                <p className="rounded-sm bg-surface-2 px-3 py-2 text-xs text-muted">
+                  Depo yetkisi atamak için önce bir Admin seçin.
+                </p>
+              )}
+            </div>
           )}
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
@@ -278,8 +322,31 @@ export function UserFormModal({
           )}
           {restrictToUserRole && (
             <p className="rounded-sm bg-surface-2 px-3 py-2 text-xs text-muted">
-              Bu kullanıcı otomatik olarak ekibinize atanacak ve tüm depolarınızı görecektir.
+              Bu kullanıcı otomatik olarak ekibinize atanacaktır.
             </p>
+          )}
+          {(restrictToUserRole || createRole === Role.USER) && (
+            <div>
+              <Label>Depo Yetkisi</Label>
+              {restrictToUserRole || createOwnerId ? (
+                <>
+                  <WarehouseCheckTree
+                    ownerId={restrictToUserRole ? undefined : createOwnerId}
+                    selectedIds={warehouseIds}
+                    onChange={setWarehouseIds}
+                  />
+                  <p className="mt-1 text-xs text-muted">
+                    {warehouseIds.length === 0
+                      ? 'Hiç depo seçmezseniz kullanıcı tüm depo havuzunu görür.'
+                      : 'Seçilen depolar ve altındaki tüm alt depolarla sınırlanır.'}
+                  </p>
+                </>
+              ) : (
+                <p className="rounded-sm bg-surface-2 px-3 py-2 text-xs text-muted">
+                  Depo yetkisi atamak için önce bir Admin seçin.
+                </p>
+              )}
+            </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>

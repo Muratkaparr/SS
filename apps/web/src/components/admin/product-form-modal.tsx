@@ -22,6 +22,8 @@ const schema = z.object({
   leadTimeDays: z.coerce.number().min(1, 'En az 1 gün olmalı'),
   safetyMarginDays: z.coerce.number().min(0),
   openingStock: z.coerce.number().min(0).optional(),
+  /** Sadece düzenlemede kullanılır: depodaki ürün sayısını hızlıca değiştirmek için. */
+  currentStock: z.coerce.number().min(0).optional(),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -89,6 +91,7 @@ export function ProductFormModal({
               criticalLevel: product.criticalLevel,
               leadTimeDays: product.leadTimeDays,
               safetyMarginDays: product.safetyMarginDays,
+              currentStock: product.currentStock,
             }
           : {
               name: '',
@@ -105,23 +108,41 @@ export function ProductFormModal({
   }, [open, product, reset]);
 
   const mutation = useMutation({
-    mutationFn: (values: FormValues) => {
-      const payload = { ...values, categoryId: values.categoryId || undefined };
-      return isEdit
-        ? clientFetch(`/products/${product!.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              ...payload,
-              applyToAllWarehouses: cascadeToAllWarehouses || undefined,
-            }),
-          })
-        : clientFetch('/products', {
+    mutationFn: async (values: FormValues) => {
+      const { currentStock, ...rest } = values;
+      const payload = { ...rest, categoryId: rest.categoryId || undefined };
+
+      if (isEdit) {
+        const result = await clientFetch(`/products/${product!.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...payload,
+            applyToAllWarehouses: cascadeToAllWarehouses || undefined,
+          }),
+        });
+
+        if (currentStock !== undefined && currentStock !== product!.currentStock) {
+          await clientFetch('/stock/movements', {
             method: 'POST',
             body: JSON.stringify({
-              ...payload,
-              warehouseId: needsWarehousePicker ? selectedWarehouseId : warehouseId,
+              productId: product!.id,
+              type: 'ADJUSTMENT',
+              quantity: currentStock,
+              reason: 'Ürünü düzenlerken hızlı stok güncelleme',
             }),
           });
+        }
+
+        return result;
+      }
+
+      return clientFetch('/products', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...payload,
+          warehouseId: needsWarehousePicker ? selectedWarehouseId : warehouseId,
+        }),
+      });
     },
     onSuccess: () => {
       toast.success(isEdit ? 'Ürün güncellendi' : 'Ürün eklendi');
@@ -154,6 +175,16 @@ export function ProductFormModal({
 
         {serverError && (
           <p className="rounded-sm bg-danger/10 px-3 py-2 text-sm text-danger">{serverError}</p>
+        )}
+
+        {isEdit && !cascadeToAllWarehouses && (
+          <div>
+            <Label htmlFor="currentStock">Mevcut Stok</Label>
+            <Input id="currentStock" type="number" min={0} {...register('currentStock')} />
+            <p className="mt-1 text-xs text-muted">
+              Depodaki ürün sayısını buradan hızlıca değiştirebilirsiniz.
+            </p>
+          </div>
         )}
 
         {needsWarehousePicker && (

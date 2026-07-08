@@ -56,6 +56,11 @@ export default function DeveloperWarehousesPage() {
     queryFn: () => clientFetch<Warehouse[]>('/warehouses'),
   });
 
+  const byId = useMemo(
+    () => new Map((warehouses ?? []).map((w) => [w.id, w])),
+    [warehouses],
+  );
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => clientFetch(`/warehouses/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -251,6 +256,11 @@ export default function DeveloperWarehousesPage() {
                           </div>
                           <div>
                             <p className="pr-16 font-medium text-ink">{w.name}</p>
+                            {w.parentId && (
+                              <p className="mt-0.5 text-xs text-muted">
+                                ↳ {byId.get(w.parentId)?.name ?? '…'}
+                              </p>
+                            )}
                             {w.location && (
                               <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
                                 <MapPin size={11} />
@@ -321,7 +331,11 @@ export default function DeveloperWarehousesPage() {
           onConfirm={() => deleteMutation.mutate(deleting.id)}
           loading={deleteMutation.isPending}
           title="Depoyu sil"
-          description={`"${deleting.name}" deposunu ve içindeki ${deleting.productCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`}
+          description={
+            deleting.childCount > 0
+              ? `"${deleting.name}" deposunu, içindeki ${deleting.productCount} ürünü ve altındaki ${deleting.childCount} alt depoyu kalıcı olarak silmek istediğinize emin misiniz?`
+              : `"${deleting.name}" deposunu ve içindeki ${deleting.productCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+          }
           confirmLabel="Sil"
           danger
         />

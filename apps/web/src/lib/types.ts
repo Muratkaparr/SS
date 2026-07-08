@@ -93,6 +93,14 @@ export interface Warehouse {
   location: string | null;
   ownerId: string;
   ownerName: string | null;
+  /** null ise bu depo bir "Ana Depo" (kök) — başka bir deponun altında değil. */
+  parentId: string | null;
+  /** Sadece bu depo bir alt depoyken (parentId dolu) anlamlıdır. */
+  includeInParentTotal: boolean;
+  /** Bu depo çocuklara sahipse, birleşik ("Bütün Ürünler") sekmesinin gösterim adı. */
+  allChildrenLabel: string;
+  /** Direkt çocuk depo sayısı. */
+  childCount: number;
   createdAt: string;
   productCount: number;
   criticalCount: number;

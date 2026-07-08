@@ -57,7 +57,10 @@ export class AuthService {
   async login(username: string, password: string) {
     const user = await this.prisma.user.findUnique({
       where: { username },
-      include: { adminOwner: { select: { id: true, name: true } } },
+      include: {
+        adminOwner: { select: { id: true, name: true } },
+        warehouseAccess: { select: { warehouseId: true } },
+      },
     });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Kullanıcı adı veya şifre hatalı');
@@ -98,7 +101,10 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { adminOwner: { select: { id: true, name: true } } },
+      include: {
+        adminOwner: { select: { id: true, name: true } },
+        warehouseAccess: { select: { warehouseId: true } },
+      },
     });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Kullanıcı bulunamadı veya pasif');

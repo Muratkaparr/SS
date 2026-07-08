@@ -12,6 +12,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import {
   assertWarehouseAccess,
   getAccessibleWarehouseIds,
+  getWarehouseSubtreeIds,
 } from '../common/utils/warehouse-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
@@ -42,6 +43,8 @@ export class ProductsService {
   async findAll(params: {
     actor: User;
     warehouseId?: string;
+    /** Bir ana deponun kendisi + "Ana Depoya Dahil Et" işaretli alt depolarının birleşik görünümü. */
+    parentAggregateId?: string;
     search?: string;
     categoryId?: string;
     criticalOnly?: boolean;
@@ -50,19 +53,34 @@ export class ProductsService {
   }) {
     const { actor, search, categoryId, criticalOnly, page, limit } = params;
 
-    const warehouseFilter = params.warehouseId
-      ? {
-          warehouseId: await assertWarehouseAccess(
-            this.prisma,
-            actor,
-            params.warehouseId,
-          ),
-        }
-      : {
-          warehouseId: {
-            in: await getAccessibleWarehouseIds(this.prisma, actor),
-          },
-        };
+    let warehouseFilter: { warehouseId: string | { in: string[] } };
+    if (params.warehouseId) {
+      warehouseFilter = {
+        warehouseId: await assertWarehouseAccess(
+          this.prisma,
+          actor,
+          params.warehouseId,
+        ),
+      };
+    } else if (params.parentAggregateId) {
+      await assertWarehouseAccess(this.prisma, actor, params.parentAggregateId);
+      const subtreeIds = await getWarehouseSubtreeIds(
+        this.prisma,
+        params.parentAggregateId,
+        { onlyIncluded: true },
+      );
+      const accessible = await getAccessibleWarehouseIds(this.prisma, actor);
+      const accessibleSet = new Set(accessible);
+      warehouseFilter = {
+        warehouseId: { in: subtreeIds.filter((id) => accessibleSet.has(id)) },
+      };
+    } else {
+      warehouseFilter = {
+        warehouseId: {
+          in: await getAccessibleWarehouseIds(this.prisma, actor),
+        },
+      };
+    }
 
     const where = {
       ...warehouseFilter,
@@ -218,9 +236,7 @@ export class ProductsService {
         },
       });
       if (existing)
-        throw new ConflictException(
-          'Bu ürün adı bu depoda zaten kullanılıyor',
-        );
+        throw new ConflictException('Bu ürün adı bu depoda zaten kullanılıyor');
     }
 
     const data: Record<string, unknown> = {};
@@ -346,10 +362,35 @@ export class ProductsService {
         },
       },
     });
+
+    // Hedef depoda aynı isimde ürün zaten varsa hata vermek yerine hızlı ekleme yapılır:
+    // yeni kayıt oluşturmadan, girilen miktar doğrudan mevcut ürünün stoğuna eklenir.
     if (existing) {
-      throw new ConflictException(
-        'Bu ürün adı hedef depoda zaten kullanılıyor',
-      );
+      if (dto.openingStock && dto.openingStock > 0) {
+        await this.stockService.createMovement(
+          {
+            productId: existing.id,
+            type: MovementType.IN,
+            quantity: dto.openingStock,
+            reason: `${source.name} — başka depodan hızlı eklendi`,
+          },
+          actor,
+        );
+      }
+
+      await this.auditLog.log({
+        userId: actor.id,
+        action: 'UPDATE',
+        resource: 'PRODUCT',
+        resourceId: existing.id,
+        meta: {
+          name: existing.name,
+          quickAddFrom: source.id,
+          addedQuantity: dto.openingStock ?? 0,
+        },
+      });
+
+      return this.findOne(existing.id, actor);
     }
 
     const last = await this.prisma.product.findFirst({

@@ -10,6 +10,10 @@ export interface PublicUser {
   /** Sadece role=USER için anlamlıdır: bağlı olduğu Admin'in kimliği. */
   adminOwnerId: string | null;
   adminOwnerName: string | null;
+  /** Sadece role=ADMIN için anlamlıdır: kök "Bütün Ürünler" sekmesinin özelleştirilmiş adı. */
+  rootAllWarehousesLabel: string | null;
+  /** Sadece role=USER için anlamlıdır: açıkça yetkilendirildiği depo id'leri. Boşsa tüm depo havuzuna erişir. */
+  warehouseAccessIds: string[];
 }
 
 export interface AuthTokens {

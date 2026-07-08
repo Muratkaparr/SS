@@ -250,7 +250,10 @@ export class StockService {
       }),
     ]);
     const criticalCount = products.filter(
-      (p) => p.criticalLevel > 0 && p.currentStock > 0 && p.currentStock <= p.criticalLevel,
+      (p) =>
+        p.criticalLevel > 0 &&
+        p.currentStock > 0 &&
+        p.currentStock <= p.criticalLevel,
     ).length;
     const outOfStockCount = products.filter((p) => p.currentStock <= 0).length;
     return { totalProducts, criticalCount, outOfStockCount, movementsToday };

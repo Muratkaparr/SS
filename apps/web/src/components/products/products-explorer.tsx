@@ -44,6 +44,8 @@ export function ProductsExplorer({
   onDuplicate,
   /** Platform Admin'in tek bir deponun içeriğine salt okunur bakması için (Depolar > Detay). */
   fixedWarehouseId,
+  /** "Bütün Ürünler" seçiliyken, belirli bir ana deponun alt ağacıyla sınırlı toplamı istemek için. */
+  parentAggregateId,
 }: {
   /** 'toggle' kullanıcıya Liste/Kart arasında geçiş imkanı sunar. */
   view?: ViewMode | 'toggle';
@@ -57,6 +59,7 @@ export function ProductsExplorer({
   onDelete?: (product: Product) => void;
   onDuplicate?: (product: Product) => void;
   fixedWarehouseId?: string;
+  parentAggregateId?: string;
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -69,12 +72,16 @@ export function ProductsExplorer({
   const warehouseQueryParam = fixedWarehouseId && !isAllWarehouses ? fixedWarehouseId : undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search, criticalOnly, refreshKey, fixedWarehouseId],
+    queryKey: ['products', search, criticalOnly, refreshKey, fixedWarehouseId, parentAggregateId],
     queryFn: () => {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
       if (criticalOnly) params.set('criticalOnly', 'true');
-      if (warehouseQueryParam) params.set('warehouseId', warehouseQueryParam);
+      if (warehouseQueryParam) {
+        params.set('warehouseId', warehouseQueryParam);
+      } else if (isAllWarehouses && parentAggregateId) {
+        params.set('parentAggregateId', parentAggregateId);
+      }
       params.set('limit', '100');
       return clientFetch<Paginated<Product>>(`/products?${params.toString()}`);
     },

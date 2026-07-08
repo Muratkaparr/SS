@@ -13,4 +13,9 @@ export class CreateWarehouseDto {
   @IsOptional()
   @IsString()
   ownerId?: string;
+
+  /** Verilirse bu depo, belirtilen deponun altına (çocuğu olarak) eklenir. Boşsa kök ("Ana Depo") olur. */
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }

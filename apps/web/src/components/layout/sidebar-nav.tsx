@@ -13,8 +13,15 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { WarehouseTreeNav } from './warehouse-tree-nav';
 
 export type PanelKey = 'user' | 'admin' | 'developer';
+
+const PRODUCTS_HREF: Record<PanelKey, string | null> = {
+  user: '/panel/products',
+  admin: '/admin/products',
+  developer: null,
+};
 
 interface NavItem {
   href: string;
@@ -52,20 +59,25 @@ export function SidebarNav({ panel }: { panel: PanelKey }) {
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;
+        const isProductsItem = item.href === PRODUCTS_HREF[panel];
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out-quart',
-              active
-                ? 'bg-primary/15 text-primary'
-                : 'text-muted hover:bg-surface-hover hover:text-ink',
+          <div key={item.href}>
+            <Link
+              href={item.href}
+              className={cn(
+                'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out-quart',
+                active
+                  ? 'bg-primary/15 text-primary'
+                  : 'text-muted hover:bg-surface-hover hover:text-ink',
+              )}
+            >
+              <Icon size={17} />
+              {item.label}
+            </Link>
+            {isProductsItem && (panel === 'admin' || panel === 'user') && (
+              <WarehouseTreeNav basePath={item.href} canManage={panel === 'admin'} />
             )}
-          >
-            <Icon size={17} />
-            {item.label}
-          </Link>
+          </div>
         );
       })}
     </nav>

@@ -5,12 +5,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { User, Warehouse } from '@prisma/client';
+import type { Prisma, User, Warehouse } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
-import { ownerScopeFor } from '../common/utils/warehouse-scope';
+import {
+  getNavigableWarehouseIds,
+  getWarehouseSubtreeIds,
+  ownerScopeFor,
+} from '../common/utils/warehouse-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { ReorderWarehousesDto } from './dto/reorder-warehouses.dto';
+import { UpdateRootLabelDto } from './dto/update-root-label.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 
 @Injectable()
@@ -20,12 +25,30 @@ export class WarehousesService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  async findAll(actor: User) {
+  /**
+   * `parentId` verilmezse geriye dönük uyumlu davranış: sahibin TÜM depo ağacı düz
+   * liste olarak döner (developer paneli ve depo yetkisi seçim ağacı bunu kullanır).
+   * `'root'` sadece ana depoları, bir id ise o deponun direkt çocuklarını döner.
+   * `ownerId` sadece Platform Admin için anlamlıdır: belirli bir Admin'in havuzuyla
+   * sınırlar (örn. bir USER'a depo yetkisi atarken).
+   */
+  async findAll(actor: User, parentId?: string, ownerId?: string) {
+    const baseWhere: Prisma.WarehouseWhereInput =
+      actor.role === 'PLATFORM_ADMIN'
+        ? ownerId
+          ? { ownerId }
+          : {}
+        : actor.role === 'USER'
+          ? { id: { in: await getNavigableWarehouseIds(this.prisma, actor) } }
+          : { ownerId: ownerScopeFor(actor) ?? '' };
+
+    const where: Prisma.WarehouseWhereInput =
+      parentId === undefined
+        ? baseWhere
+        : { ...baseWhere, parentId: parentId === 'root' ? null : parentId };
+
     const warehouses = await this.prisma.warehouse.findMany({
-      where:
-        actor.role === 'PLATFORM_ADMIN'
-          ? {}
-          : { ownerId: ownerScopeFor(actor) ?? '' },
+      where,
       include: { owner: { select: { id: true, name: true } } },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
@@ -44,6 +67,13 @@ export class WarehousesService {
     }
     for (const warehouse of warehouses) {
       this.assertOwnership(warehouse, actor);
+    }
+
+    const distinctParents = new Set(warehouses.map((w) => w.parentId ?? ''));
+    if (distinctParents.size > 1) {
+      throw new BadRequestException(
+        'Sadece aynı üst depo altındaki depolar birlikte sıralanabilir',
+      );
     }
 
     await this.prisma.$transaction(
@@ -94,15 +124,26 @@ export class WarehousesService {
       ownerId = actor.id;
     }
 
-    const existing = await this.prisma.warehouse.findUnique({
-      where: { ownerId_name: { ownerId, name: dto.name } },
+    let parentId: string | null = null;
+    if (dto.parentId) {
+      const parent = await this.prisma.warehouse.findUnique({
+        where: { id: dto.parentId },
+      });
+      if (!parent || parent.ownerId !== ownerId) {
+        throw new NotFoundException('Belirtilen üst depo bulunamadı');
+      }
+      parentId = parent.id;
+    }
+
+    const existing = await this.prisma.warehouse.findFirst({
+      where: { ownerId, parentId, name: dto.name },
     });
     if (existing) {
       throw new ConflictException('Bu isimde bir deponuz zaten var');
     }
 
     const last = await this.prisma.warehouse.findFirst({
-      where: { ownerId },
+      where: { ownerId, parentId },
       orderBy: { sortOrder: 'desc' },
       select: { sortOrder: true },
     });
@@ -112,6 +153,7 @@ export class WarehousesService {
         name: dto.name,
         location: dto.location,
         ownerId,
+        parentId,
         sortOrder: (last?.sortOrder ?? -1) + 1,
       },
       include: { owner: { select: { id: true, name: true } } },
@@ -121,7 +163,7 @@ export class WarehousesService {
       action: 'CREATE',
       resource: 'WAREHOUSE',
       resourceId: warehouse.id,
-      meta: { name: warehouse.name },
+      meta: { name: warehouse.name, parentId },
     });
     return this.withStats(warehouse);
   }
@@ -131,11 +173,58 @@ export class WarehousesService {
     if (!warehouse) throw new NotFoundException('Depo bulunamadı');
     this.assertOwnership(warehouse, actor);
 
-    if (dto.name && dto.name !== warehouse.name) {
-      const existing = await this.prisma.warehouse.findUnique({
-        where: { ownerId_name: { ownerId: warehouse.ownerId, name: dto.name } },
+    // Depo, mevcut verisi silinmeden başka bir üst deponun altına taşınabilir (veya
+    // `parentId: null` ile bağımsız bir Ana Depo'ya dönüştürülebilir).
+    const parentChanging =
+      dto.parentId !== undefined && dto.parentId !== warehouse.parentId;
+    const nextParentId = parentChanging ? dto.parentId! : warehouse.parentId;
+
+    if (parentChanging) {
+      if (nextParentId === warehouse.id) {
+        throw new BadRequestException('Bir depo kendi altına taşınamaz');
+      }
+
+      if (nextParentId !== null) {
+        const newParent = await this.prisma.warehouse.findUnique({
+          where: { id: nextParentId },
+        });
+        if (!newParent || newParent.ownerId !== warehouse.ownerId) {
+          throw new NotFoundException('Hedef üst depo bulunamadı');
+        }
+        const descendantIds = await getWarehouseSubtreeIds(
+          this.prisma,
+          warehouse.id,
+        );
+        if (descendantIds.includes(nextParentId)) {
+          throw new BadRequestException(
+            'Bir depo, kendi alt ağacındaki bir depoya taşınamaz',
+          );
+        }
+      }
+
+      // Bir Ana Depo alt depo yapılıyorsa, sahibin en az bir Ana Depo'su kalmalı.
+      if (warehouse.parentId === null) {
+        const rootCount = await this.prisma.warehouse.count({
+          where: { ownerId: warehouse.ownerId, parentId: null },
+        });
+        if (rootCount <= 1) {
+          throw new BadRequestException('En az bir ana depo kalmalı');
+        }
+      }
+    }
+
+    const nextName = dto.name ?? warehouse.name;
+    const nameChanging = dto.name !== undefined && dto.name !== warehouse.name;
+    if (nameChanging || parentChanging) {
+      const conflict = await this.prisma.warehouse.findFirst({
+        where: {
+          ownerId: warehouse.ownerId,
+          parentId: nextParentId,
+          name: nextName,
+          id: { not: warehouse.id },
+        },
       });
-      if (existing)
+      if (conflict)
         throw new ConflictException('Bu isimde bir deponuz zaten var');
     }
 
@@ -144,6 +233,13 @@ export class WarehousesService {
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.location !== undefined ? { location: dto.location } : {}),
+        ...(dto.includeInParentTotal !== undefined
+          ? { includeInParentTotal: dto.includeInParentTotal }
+          : {}),
+        ...(dto.allChildrenLabel !== undefined
+          ? { allChildrenLabel: dto.allChildrenLabel }
+          : {}),
+        ...(parentChanging ? { parentId: nextParentId } : {}),
       },
       include: { owner: { select: { id: true, name: true } } },
     });
@@ -157,16 +253,38 @@ export class WarehousesService {
     return this.withStats(updated);
   }
 
+  /** Kök seviye "Bütün Ürünler" sekmesinin bu Admin için özelleştirilmiş adını günceller. */
+  async updateRootLabel(actor: User, dto: UpdateRootLabelDto) {
+    if (actor.role !== 'ADMIN') {
+      throw new ForbiddenException('Bu ayarı sadece Admin değiştirebilir');
+    }
+    await this.prisma.user.update({
+      where: { id: actor.id },
+      data: { rootAllWarehousesLabel: dto.label },
+    });
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'UPDATE',
+      resource: 'USER_SETTINGS',
+      meta: { rootAllWarehousesLabel: dto.label },
+    });
+    return { rootAllWarehousesLabel: dto.label };
+  }
+
   async remove(id: string, actor: User) {
     const warehouse = await this.prisma.warehouse.findUnique({ where: { id } });
     if (!warehouse) throw new NotFoundException('Depo bulunamadı');
     this.assertOwnership(warehouse, actor);
 
-    const ownerWarehouseCount = await this.prisma.warehouse.count({
-      where: { ownerId: warehouse.ownerId },
-    });
-    if (ownerWarehouseCount <= 1) {
-      throw new BadRequestException('En az bir depo kalmalı');
+    // "En az bir depo kalmalı" kısıtı sadece kök (Ana Depo) seviyesinde uygulanır —
+    // bir ana deponun tüm alt depolarını silmek serbesttir.
+    if (warehouse.parentId === null) {
+      const rootCount = await this.prisma.warehouse.count({
+        where: { ownerId: warehouse.ownerId, parentId: null },
+      });
+      if (rootCount <= 1) {
+        throw new BadRequestException('En az bir ana depo kalmalı');
+      }
     }
 
     await this.prisma.warehouse.delete({ where: { id } });
@@ -191,7 +309,7 @@ export class WarehousesService {
   private async withStats(
     warehouse: Warehouse & { owner?: { id: string; name: string } },
   ) {
-    const [products, userCount] = await Promise.all([
+    const [products, userCount, childCount] = await Promise.all([
       this.prisma.product.findMany({
         where: { warehouseId: warehouse.id },
         select: { currentStock: true, criticalLevel: true },
@@ -202,6 +320,7 @@ export class WarehousesService {
           OR: [{ id: warehouse.ownerId }, { adminOwnerId: warehouse.ownerId }],
         },
       }),
+      this.prisma.warehouse.count({ where: { parentId: warehouse.id } }),
     ]);
 
     const criticalCount = products.filter(
@@ -214,6 +333,10 @@ export class WarehousesService {
       location: warehouse.location,
       ownerId: warehouse.ownerId,
       ownerName: warehouse.owner?.name ?? null,
+      parentId: warehouse.parentId,
+      includeInParentTotal: warehouse.includeInParentTotal,
+      allChildrenLabel: warehouse.allChildrenLabel,
+      childCount,
       createdAt: warehouse.createdAt,
       productCount: products.length,
       criticalCount,

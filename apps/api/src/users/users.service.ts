@@ -13,9 +13,11 @@ import { sanitizeUser } from '../common/utils/sanitize-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateWarehouseAccessDto } from './dto/update-warehouse-access.dto';
 
 const ADMIN_OWNER_SELECT = {
   adminOwner: { select: { id: true, name: true } },
+  warehouseAccess: { select: { warehouseId: true } },
 } as const;
 
 /** Admin (Platform Admin değil) sadece kendi ekibindeki USER rolündeki hesapları yönetebilir. */
@@ -216,6 +218,69 @@ export class UsersService {
       meta: { changes: Object.keys(data) },
     });
     return sanitizeUser(updated);
+  }
+
+  /** Bir USER hesabının çalışabileceği depoları atar. Boş dizi = kısıt kaldırılır (tüm havuza döner). */
+  async updateWarehouseAccess(
+    id: string,
+    dto: UpdateWarehouseAccessDto,
+    actor: User,
+  ) {
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      throw new NotFoundException('Kullanıcı bulunamadı');
+    }
+    if ((target.role as unknown as Role) !== Role.USER) {
+      throw new ForbiddenException(
+        'Depo yetkisi sadece "Kullanıcı" rolündeki hesaplara atanabilir',
+      );
+    }
+    if (isScopedAdmin(actor) && target.adminOwnerId !== actor.id) {
+      throw new ForbiddenException(
+        'Admin sadece kendi ekibindeki kullanıcıların depo yetkisini değiştirebilir',
+      );
+    }
+
+    const uniqueIds = Array.from(new Set(dto.warehouseIds));
+    if (uniqueIds.length > 0) {
+      const warehouses = await this.prisma.warehouse.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, ownerId: true },
+      });
+      if (warehouses.length !== uniqueIds.length) {
+        throw new NotFoundException('Bazı depolar bulunamadı');
+      }
+      for (const warehouse of warehouses) {
+        if (warehouse.ownerId !== target.adminOwnerId) {
+          throw new ForbiddenException(
+            "Sadece kullanıcının bağlı olduğu Admin'in depoları atanabilir",
+          );
+        }
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.warehouseAccess.deleteMany({ where: { userId: id } }),
+      ...uniqueIds.map((warehouseId) =>
+        this.prisma.warehouseAccess.create({
+          data: { userId: id, warehouseId },
+        }),
+      ),
+    ]);
+
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'UPDATE',
+      resource: 'USER_WAREHOUSE_ACCESS',
+      resourceId: id,
+      meta: { warehouseIds: uniqueIds },
+    });
+
+    const updated = await this.prisma.user.findUnique({
+      where: { id },
+      include: ADMIN_OWNER_SELECT,
+    });
+    return sanitizeUser(updated!);
   }
 
   async remove(id: string, actor: User) {

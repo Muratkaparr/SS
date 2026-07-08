@@ -150,3 +150,4 @@ PRODUCT.md açıkça şunu söylüyor: *"Kullanıcı (User): ... Hiçbir düzenl
 4. **Kullanılabilirlik:** `error.tsx`/`loading.tsx` eklenmesi, tüm liste görünümlerine sayfalama/arama, audit log'a kullanıcı+tarih filtresi.
 5. **Cila:** Inline düzenleme (modal yerine), admin'e kendi audit geçmişinin gösterilmesi, depo düzenleme/silmenin developer paneline eklenmesi, form tutarlılığı (react-hook-form her yerde).
 6. **Teknik borç:** API için test paketi yazılması, görsel dosya temizliği, kritik seviye öneri parametrelerinin (`leadTimeDays`/`safetyMarginDays`) admin UI'da açığa çıkarılması.
+ 

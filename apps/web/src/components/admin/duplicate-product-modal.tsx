@@ -85,8 +85,9 @@ export function DuplicateProductModal({
     <Modal open={open} onClose={onClose} title={`Başka Depoya Ekle — ${product.name}`} className="max-w-sm">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <p className="text-sm text-muted">
-          <span className="font-medium text-ink">{product.name}</span> ürünü, seçtiğiniz depoya aynı
-          bilgilerle (stok sıfırdan) eklenecek.
+          <span className="font-medium text-ink">{product.name}</span> ürünü seçtiğiniz depoya
+          eklenecek. Depoda aynı isimde bir ürün zaten varsa hata vermez — girdiğiniz miktar
+          doğrudan o ürünün mevcut stoğuna eklenir.
         </p>
 
         {serverError && (
@@ -112,8 +113,12 @@ export function DuplicateProductModal({
               <FieldError>{errors.targetWarehouseId?.message}</FieldError>
             </div>
             <div>
-              <Label htmlFor="dup-opening">Açılış Stoğu (opsiyonel)</Label>
+              <Label htmlFor="dup-opening">Miktar (opsiyonel)</Label>
               <Input id="dup-opening" type="number" min={0} placeholder="0" {...register('openingStock')} />
+              <p className="mt-1 text-xs text-muted">
+                Ürün hedef depoda yoksa açılış stoğu, varsa mevcut stoğa eklenecek miktar olarak
+                kullanılır.
+              </p>
             </div>
           </>
         )}

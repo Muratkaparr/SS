@@ -17,6 +17,7 @@ const createSchema = z.object({
   name: z.string().min(2, 'Depo adı en az 2 karakter olmalı'),
   location: z.string().optional(),
   ownerId: z.string().min(1, 'Bir Admin seçilmeli'),
+  parentId: z.string().optional(),
 });
 
 const editSchema = z.object({
@@ -50,6 +51,13 @@ export function WarehouseFormModal({
 
   const createForm = useForm<CreateValues>({ resolver: zodResolver(createSchema) });
   const editForm = useForm<EditValues>({ resolver: zodResolver(editSchema) });
+  const selectedOwnerId = createForm.watch('ownerId');
+
+  const { data: ownerWarehouses } = useQuery({
+    queryKey: ['warehouses', 'flat', selectedOwnerId],
+    queryFn: () => clientFetch<Warehouse[]>(`/warehouses?ownerId=${selectedOwnerId}`),
+    enabled: open && !isEdit && !!selectedOwnerId,
+  });
 
   useEffect(() => {
     if (open) {
@@ -58,14 +66,22 @@ export function WarehouseFormModal({
       if (warehouse) {
         editForm.reset({ name: warehouse.name, location: warehouse.location ?? '' });
       } else {
-        createForm.reset({ name: '', location: '', ownerId: '' });
+        createForm.reset({ name: '', location: '', ownerId: '', parentId: '' });
       }
     }
   }, [open, warehouse]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    // Admin değişince önceki üst depo seçimi artık geçersiz olabilir.
+    createForm.setValue('parentId', '');
+  }, [selectedOwnerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const createMutation = useMutation({
     mutationFn: (values: CreateValues) =>
-      clientFetch('/warehouses', { method: 'POST', body: JSON.stringify(values) }),
+      clientFetch('/warehouses', {
+        method: 'POST',
+        body: JSON.stringify({ ...values, parentId: values.parentId || undefined }),
+      }),
     onSuccess: () => {
       toast.success('Depo oluşturuldu');
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
@@ -142,6 +158,19 @@ export function WarehouseFormModal({
             </Select>
             <FieldError>{createForm.formState.errors.ownerId?.message}</FieldError>
           </div>
+          {selectedOwnerId && (
+            <div>
+              <Label htmlFor="wh-parent">Üst Depo (opsiyonel)</Label>
+              <Select id="wh-parent" {...createForm.register('parentId')}>
+                <option value="">Yok (Ana Depo)</option>
+                {ownerWarehouses?.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div>
             <Label htmlFor="wh-name">Depo Adı</Label>
             <Input id="wh-name" placeholder="Örn. Güney Depo" {...createForm.register('name')} />

@@ -30,13 +30,32 @@ model Warehouse {
 
   // Depo bir Admin'e aittir; o Admin depoyu diğer depolarından bağımsız, sınırsız
   // sayıda oluşturabilir/yeniden adlandırabilir. Admin'in altındaki Kullanıcılar da
-  // (adminOwnerId üzerinden) bu depo havuzunun tamamını görür.
+  // (adminOwnerId üzerinden), WarehouseAccess ile kısıtlanmadıkları sürece, bu depo
+  // havuzunun tamamını görür.
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  products Product[]
+  // Sınırsız derinlikte hiyerarşi: NULL ise bu depo bir "Ana Depo" (kök). Bir depo
+  // silinirse altındaki tüm alt ağaç da silinir (Cascade).
+  parentId String?
+  parent   Warehouse?  @relation("WarehouseTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Warehouse[] @relation("WarehouseTree")
 
-  @@unique([ownerId, name])
+  // Sadece alt depo iken (parentId dolu) anlamlıdır: üst deponun toplam görünümüne
+  // (allChildrenLabel) dahil mi, yoksa üst depodan bağımsız mı sayılsın.
+  includeInParentTotal Boolean @default(true)
+
+  // Bu depo çocuklara sahipse, kendi alt depolarının birleşik ("Bütün Ürünler")
+  // sekmesinin gösterim adı — admin tarafından yeniden adlandırılabilir.
+  allChildrenLabel String @default("Bütün Ürünler")
+
+  products     Product[]
+  accessGrants WarehouseAccess[]
+
+  // İsim tekilliği application seviyesinde (ownerId + parentId + name) kontrol edilir
+  // — SQLite'ta NULL parentId'ler unique index'te birbirinden ayrı sayıldığından kök
+  // depolar için DB constraint'e güvenilemez, bkz. warehouses.service.ts.
+  @@index([ownerId, parentId])
 }
 
 model User {
@@ -54,10 +73,30 @@ model User {
   adminOwner   User?   @relation("AdminOwnsUsers", fields: [adminOwnerId], references: [id])
   managedUsers User[]  @relation("AdminOwnsUsers")
 
+  // Sadece role=ADMIN için anlamlıdır: kök seviye "Bütün Ürünler" sekmesinin bu Admin
+  // için özelleştirilmiş adı. NULL ise varsayılan "Bütün Ürünler" kullanılır.
+  rootAllWarehousesLabel String?
+
   ownedWarehouses Warehouse[]
   stockMovements  StockMovement[]
   auditLogs       AuditLog[]
   refreshTokens   RefreshToken[]
+  // Sadece role=USER için anlamlıdır: hangi depolarda çalışabileceğine dair açık
+  // izinler. Boşsa (hiç kayıt yoksa) adminOwner'ın tüm depo havuzuna erişir.
+  warehouseAccess WarehouseAccess[]
+}
+
+/** Bir USER'ın çalışabileceği depo(lar) — verildiğinde erişim SADECE bunlarla (+ alt ağaçlarıyla) sınırlanır. */
+model WarehouseAccess {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, warehouseId])
+  @@index([warehouseId])
 }
 
 model RefreshToken {

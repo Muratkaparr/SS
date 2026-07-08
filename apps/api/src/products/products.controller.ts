@@ -44,6 +44,7 @@ export class ProductsController {
   findAll(
     @CurrentUser() actor: User,
     @Query('warehouseId') warehouseId?: string,
+    @Query('parentAggregateId') parentAggregateId?: string,
     @Query('search') search?: string,
     @Query('categoryId') categoryId?: string,
     @Query('criticalOnly') criticalOnly?: string,
@@ -53,6 +54,7 @@ export class ProductsController {
     return this.productsService.findAll({
       actor,
       warehouseId,
+      parentAggregateId,
       search,
       categoryId,
       criticalOnly: criticalOnly === 'true',

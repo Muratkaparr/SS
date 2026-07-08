@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateWarehouseAccessDto } from './dto/update-warehouse-access.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -51,6 +52,15 @@ export class UsersController {
     @CurrentUser() actor: User,
   ) {
     return this.usersService.update(id, dto, actor);
+  }
+
+  @Patch(':id/warehouse-access')
+  updateWarehouseAccess(
+    @Param('id') id: string,
+    @Body() dto: UpdateWarehouseAccessDto,
+    @CurrentUser() actor: User,
+  ) {
+    return this.usersService.updateWarehouseAccess(id, dto, actor);
   }
 
   @Delete(':id')

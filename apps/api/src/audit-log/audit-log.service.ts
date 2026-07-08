@@ -90,7 +90,9 @@ export class AuditLogService {
         skip: (page - 1) * limit,
         take: limit,
         include: {
-          user: { select: { id: true, name: true, username: true, role: true } },
+          user: {
+            select: { id: true, name: true, username: true, role: true },
+          },
         },
       }),
       this.prisma.auditLog.count({ where }),

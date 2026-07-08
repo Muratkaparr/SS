@@ -159,11 +159,11 @@ async function seedWarehouseProducts(
 }
 
 async function upsertWarehouse(ownerId: string, name: string, location: string) {
-  return prisma.warehouse.upsert({
-    where: { ownerId_name: { ownerId, name } },
-    update: {},
-    create: { ownerId, name, location },
+  const existing = await prisma.warehouse.findFirst({
+    where: { ownerId, parentId: null, name },
   });
+  if (existing) return existing;
+  return prisma.warehouse.create({ data: { ownerId, name, location } });
 }
 
 async function main() {
