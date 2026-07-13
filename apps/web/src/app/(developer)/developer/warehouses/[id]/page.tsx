@@ -8,10 +8,11 @@ import { AlertTriangle, ArrowLeft, Boxes, Users } from 'lucide-react';
 import { ProductCard } from '@/components/products/product-card';
 import { ProductsExplorer } from '@/components/products/products-explorer';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { StatCard } from '@/components/ui/stat-card';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { clientFetch } from '@/lib/client-fetch';
-import { mergeByName } from '@/lib/merge-products';
+import { isProductCritical, mergeByName } from '@/lib/merge-products';
 import type { Paginated, Product, Warehouse } from '@/lib/types';
 
 export default function DeveloperWarehouseDetailPage({
@@ -30,10 +31,19 @@ export default function DeveloperWarehouseDetailPage({
 }
 
 function SingleWarehouseView({ id }: { id: string }) {
-  const { data: warehouse } = useQuery({
+  const {
+    data: warehouse,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['warehouses', id],
     queryFn: () => clientFetch<Warehouse>(`/warehouses/${id}`),
   });
+
+  if (isError) {
+    return <ErrorState error={error as Error} reset={() => refetch()} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -65,7 +75,7 @@ function SingleWarehouseView({ id }: { id: string }) {
         </div>
       )}
 
-      <ProductsExplorer view="grid" fixedWarehouseId={id} canManagePhoto />
+      <ProductsExplorer view="grid" fixedWarehouseId={id} />
     </div>
   );
 }
@@ -79,15 +89,17 @@ function OwnerWarehousesView({ ownerId }: { ownerId: string }) {
   const ownerWarehouses = (warehouses ?? []).filter((w) => w.ownerId === ownerId);
   const ownerName = ownerWarehouses[0]?.ownerName ?? 'Admin';
 
-  const { data, isLoading } = useQuery({
+  // Bu görünüm bir sayaç değil, tam bir birleşik ürün ızgarasıdır — sayfalanmıyor,
+  // bu yüzden kesilmemesi için yüksek bir üst sınır kullanılır.
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['products', 'developer-all'],
-    queryFn: () => clientFetch<Paginated<Product>>('/products?limit=500'),
+    queryFn: () => clientFetch<Paginated<Product>>('/products?limit=100000'),
   });
 
   const warehouseIds = new Set(ownerWarehouses.map((w) => w.id));
   const scopedProducts = (data?.items ?? []).filter((p) => warehouseIds.has(p.warehouseId));
   const merged = mergeByName(scopedProducts);
-  const totalCritical = merged.filter((p) => p.currentStock <= p.criticalLevel).length;
+  const totalCritical = merged.filter(isProductCritical).length;
 
   return (
     <div className="space-y-6">
@@ -121,6 +133,10 @@ function OwnerWarehousesView({ ownerId }: { ownerId: string }) {
         <div className="rounded-md border border-border bg-surface">
           <TableSkeleton rows={6} cols={5} />
         </div>
+      ) : isError ? (
+        <div className="rounded-md border border-border bg-surface">
+          <ErrorState error={error as Error} reset={() => refetch()} />
+        </div>
       ) : merged.length === 0 ? (
         <div className="rounded-md border border-border bg-surface">
           <EmptyState icon={Boxes} title="Bu Admin'in henüz ürünü yok" />
@@ -128,7 +144,7 @@ function OwnerWarehousesView({ ownerId }: { ownerId: string }) {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
           {merged.map((product) => (
-            <ProductCard key={product.id} product={product} canManagePhoto showWarehouseBadge />
+            <ProductCard key={product.id} product={product} showWarehouseBadge />
           ))}
         </div>
       )}

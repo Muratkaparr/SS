@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { CategoryManagerModal } from '@/components/admin/category-manager-modal';
 import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
@@ -49,6 +50,7 @@ export function ProductFormModal({
   const [serverError, setServerError] = useState<string | null>(null);
   const needsWarehousePicker = !isEdit && (!warehouseId || warehouseId === ALL_WAREHOUSES_ID);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+  const [managingCategories, setManagingCategories] = useState(false);
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -122,15 +124,24 @@ export function ProductFormModal({
         });
 
         if (currentStock !== undefined && currentStock !== product!.currentStock) {
-          await clientFetch('/stock/movements', {
-            method: 'POST',
-            body: JSON.stringify({
-              productId: product!.id,
-              type: 'ADJUSTMENT',
-              quantity: currentStock,
-              reason: 'Ürünü düzenlerken hızlı stok güncelleme',
-            }),
-          });
+          try {
+            await clientFetch('/stock/movements', {
+              method: 'POST',
+              body: JSON.stringify({
+                productId: product!.id,
+                type: 'ADJUSTMENT',
+                quantity: currentStock,
+                reason: 'Ürün formundan hızlı stok güncelleme (sayım)',
+              }),
+            });
+          } catch (stockErr) {
+            // Ürün alanları (isim/kategori/kritik seviye vb.) zaten kaydedildi — sadece stok
+            // kısmı başarısız oldu. Bunu ayrı bir hata olarak bildir ki liste/detay stale
+            // kalmasın ve kullanıcı neyin kaydolup neyin kaydolmadığını bilsin.
+            throw new Error(
+              `Ürün bilgileri kaydedildi, ancak stok güncellemesi başarısız oldu: ${(stockErr as Error).message}`,
+            );
+          }
         }
 
         return result;
@@ -146,13 +157,17 @@ export function ProductFormModal({
     },
     onSuccess: () => {
       toast.success(isEdit ? 'Ürün güncellendi' : 'Ürün eklendi');
+      onClose();
+    },
+    onError: (err: Error) => setServerError(err.message),
+    onSettled: () => {
+      // Kısmi başarıda bile (ürün alanları kaydedildi, stok hareketi başarısız oldu) liste/detay
+      // sunucudaki gerçek durumu yansıtmalı — bu yüzden başarı/hata fark etmeksizin invalidate edilir.
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
       queryClient.invalidateQueries({ queryKey: ['stock-alerts'] });
-      onClose();
     },
-    onError: (err: Error) => setServerError(err.message),
   });
 
   function onSubmit(values: FormValues) {
@@ -165,6 +180,7 @@ export function ProductFormModal({
   }
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title={isEdit ? 'Ürünü Düzenle' : 'Yeni Ürün Ekle'} className="max-w-lg">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {isEdit && cascadeToAllWarehouses && (
@@ -182,7 +198,9 @@ export function ProductFormModal({
             <Label htmlFor="currentStock">Mevcut Stok</Label>
             <Input id="currentStock" type="number" min={0} {...register('currentStock')} />
             <p className="mt-1 text-xs text-muted">
-              Depodaki ürün sayısını buradan hızlıca değiştirebilirsiniz.
+              Depodaki ürün sayısını buradan hızlıca değiştirebilirsiniz — bu bir stok hareketi
+              ("Düzeltme") olarak Hareketler geçmişine kaydedilir. Neden/tarih detaylı bir kayıt
+              için "Stok Hareketi" işlemini kullanın.
             </p>
           </div>
         )}
@@ -224,7 +242,16 @@ export function ProductFormModal({
         </div>
 
         <div>
-          <Label htmlFor="categoryId">Kategori</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="categoryId">Kategori</Label>
+            <button
+              type="button"
+              onClick={() => setManagingCategories(true)}
+              className="text-xs font-medium text-accent hover:underline"
+            >
+              Kategorileri yönet
+            </button>
+          </div>
           <Select id="categoryId" {...register('categoryId')}>
             <option value="">Kategorisiz</option>
             {categories?.map((c) => (
@@ -275,5 +302,7 @@ export function ProductFormModal({
         </div>
       </form>
     </Modal>
+    <CategoryManagerModal open={managingCategories} onClose={() => setManagingCategories(false)} />
+    </>
   );
 }

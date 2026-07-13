@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GripVertical, LayoutGrid, List, Package, Search } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
+  LayoutGrid,
+  List,
+  Package,
+  Search,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -13,18 +21,18 @@ import { ProductCard } from '@/components/products/product-card';
 import { ALL_WAREHOUSES_ID } from '@/lib/warehouse-constants';
 import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
-import { mergeByName } from '@/lib/merge-products';
+import { isProductCritical, mergeByName } from '@/lib/merge-products';
 import type { Paginated, Product } from '@/lib/types';
 
 function stockTone(product: Product): 'danger' | 'warning' | 'success' {
   if (product.currentStock <= 0) return 'danger';
-  if (product.currentStock <= product.criticalLevel) return 'warning';
+  if (isProductCritical(product)) return 'warning';
   return 'success';
 }
 
 function stockLabel(product: Product): string {
   if (product.currentStock <= 0) return 'Tükendi';
-  if (product.currentStock <= product.criticalLevel) return 'Kritik';
+  if (isProductCritical(product)) return 'Kritik';
   return 'Normal';
 }
 
@@ -64,15 +72,32 @@ export function ProductsExplorer({
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [criticalOnly, setCriticalOnly] = useState(false);
+  const [page, setPage] = useState(1);
   const [activeView, setActiveView] = useState<ViewMode>(view === 'toggle' ? 'grid' : view);
   const [dragId, setDragId] = useState<string | null>(null);
   const [order, setOrder] = useState<Product[] | null>(null);
 
+  const PAGE_SIZE = 50;
+
   const isAllWarehouses = fixedWarehouseId === ALL_WAREHOUSES_ID;
   const warehouseQueryParam = fixedWarehouseId && !isAllWarehouses ? fixedWarehouseId : undefined;
 
+  // Filtre/depo değiştiğinde sayfa 1'e dön — aksi halde artık var olmayan bir sayfada kalınabilir.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- filtre değişince sayfa sıfırlanmalı
+    setPage(1);
+  }, [search, criticalOnly, fixedWarehouseId, parentAggregateId]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search, criticalOnly, refreshKey, fixedWarehouseId, parentAggregateId],
+    queryKey: [
+      'products',
+      search,
+      criticalOnly,
+      page,
+      refreshKey,
+      fixedWarehouseId,
+      parentAggregateId,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -82,12 +107,16 @@ export function ProductsExplorer({
       } else if (isAllWarehouses && parentAggregateId) {
         params.set('parentAggregateId', parentAggregateId);
       }
-      params.set('limit', '100');
+      params.set('page', String(page));
+      params.set('limit', String(PAGE_SIZE));
       return clientFetch<Paginated<Product>>(`/products?${params.toString()}`);
     },
   });
 
   const products = isAllWarehouses ? mergeByName(data?.items ?? []) : (data?.items ?? []);
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const isTruncatedView = total > (data?.items.length ?? 0);
 
   // Sunucudan yeni veri geldiğinde (veya filtre değiştiğinde) elle sıralamayı sunucu düzenine bırak.
   useEffect(() => {
@@ -95,9 +124,9 @@ export function ProductsExplorer({
     setOrder(null);
   }, [data, isAllWarehouses, search, criticalOnly]);
 
-  // Sıralama yalnızca filtresiz görünümde mümkün — filtreliyken kısmi listeyi yeniden dizmek
-  // global sırayı bozardı.
-  const reorderEnabled = !!canReorder && !search && !criticalOnly;
+  // Sıralama yalnızca filtresiz VE tek sayfalık (kesilmemiş) görünümde mümkün — kısmi bir
+  // sayfayı yeniden dizmek global sırayı bozar (bkz. handleDrop → reorder mutation).
+  const reorderEnabled = !!canReorder && !search && !criticalOnly && !isTruncatedView;
   const displayProducts = order ?? products;
 
   const reorderMutation = useMutation({
@@ -220,8 +249,14 @@ export function ProductsExplorer({
         <div className="rounded-md border border-border bg-surface">
           <EmptyState
             icon={Package}
-            title="Ürün bulunamadı"
-            description="Arama kriterlerinizi değiştirmeyi deneyin."
+            title={search || criticalOnly ? 'Ürün bulunamadı' : 'Bu depoda henüz ürün yok'}
+            description={
+              search || criticalOnly
+                ? 'Arama kriterlerinizi değiştirmeyi deneyin.'
+                : headerAction
+                  ? 'Başlamak için ilk ürünü ekleyin.'
+                  : 'Bir yönetici ürün eklediğinde burada görünecek.'
+            }
           />
         </div>
       ) : activeView === 'grid' ? (
@@ -318,6 +353,37 @@ export function ProductsExplorer({
               ))}
             </Tbody>
           </Table>
+        </div>
+      )}
+
+      {!isLoading && total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-muted">
+          <span>
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total} ürün
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              aria-label="Önceki sayfa"
+              className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="px-1 tabular-nums">
+              {page} / {pageCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+              aria-label="Sonraki sayfa"
+              className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       )}
     </div>

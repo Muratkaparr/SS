@@ -1,10 +1,12 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { ownerScopeFor } from '../common/utils/warehouse-scope';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -14,16 +16,29 @@ export class CategoriesService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  findAll() {
-    return this.prisma.category.findMany({ orderBy: { name: 'asc' } });
+  /**
+   * Kategoriler Admin'e özeldir — bir Admin'in kategori isimleri başka Admin'lere
+   * sızmamalı. PLATFORM_ADMIN sınır tanımaz (sistem geneli görünüm/moderasyon için).
+   */
+  findAll(actor: User) {
+    const ownerId = ownerScopeFor(actor);
+    return this.prisma.category.findMany({
+      where: actor.role === 'PLATFORM_ADMIN' ? {} : { ownerId: ownerId ?? '' },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async create(name: string, actor: User) {
-    const existing = await this.prisma.category.findUnique({ where: { name } });
+    const ownerId = actor.id;
+    const existing = await this.prisma.category.findUnique({
+      where: { ownerId_name: { ownerId, name } },
+    });
     if (existing) {
       throw new ConflictException('Bu isimde bir kategori zaten var');
     }
-    const category = await this.prisma.category.create({ data: { name } });
+    const category = await this.prisma.category.create({
+      data: { name, ownerId },
+    });
     await this.auditLog.log({
       userId: actor.id,
       action: 'CREATE',
@@ -37,9 +52,12 @@ export class CategoriesService {
   async update(id: string, name: string, actor: User) {
     const category = await this.prisma.category.findUnique({ where: { id } });
     if (!category) throw new NotFoundException('Kategori bulunamadı');
+    if (category.ownerId !== actor.id) {
+      throw new ForbiddenException('Bu kategoriye erişiminiz yok');
+    }
     if (name !== category.name) {
       const existing = await this.prisma.category.findUnique({
-        where: { name },
+        where: { ownerId_name: { ownerId: category.ownerId, name } },
       });
       if (existing) {
         throw new ConflictException('Bu isimde bir kategori zaten var');
@@ -63,6 +81,9 @@ export class CategoriesService {
   async remove(id: string, actor: User) {
     const category = await this.prisma.category.findUnique({ where: { id } });
     if (!category) throw new NotFoundException('Kategori bulunamadı');
+    if (category.ownerId !== actor.id) {
+      throw new ForbiddenException('Bu kategoriye erişiminiz yok');
+    }
     await this.prisma.$transaction([
       this.prisma.product.updateMany({
         where: { categoryId: id },

@@ -26,6 +26,10 @@ export function useWarehouseContext(path: string[]) {
     name: ancestorQueries[i]?.data?.name ?? null,
   }));
   const isLoadingContext = ancestorQueries.some((q) => q.isLoading);
+  // Depo silinmiş/taşınmışsa (veya erişim kaldırılmışsa) ilgili ancestor sorgusu 404/403
+  // döner. React Query bunu kendiliğinden error.tsx'e taşımaz — sessizce boş/kırık bir
+  // duruma düşmemek için tüketen sayfa bu bayrağı kontrol edip açık bir hata göstermeli.
+  const contextError = ancestorQueries.find((q) => q.isError)?.error ?? null;
 
   const lastWarehouse = ancestorQueries.at(-1)?.data ?? null;
   // Alt deposu olmayan bir "yaprak" depo, kendi başına gezinilebilir bir bağlam değildir —
@@ -87,5 +91,6 @@ export function useWarehouseContext(path: string[]) {
     allLabel,
     renameAllLabel,
     isLoadingContext,
+    contextError,
   };
 }

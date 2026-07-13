@@ -7,6 +7,7 @@ import type { PublicUser } from '@repo/shared-types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input, Select } from '@/components/ui/input';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@/components/ui/table';
 import { TableSkeleton } from '@/components/ui/skeleton';
@@ -52,7 +53,13 @@ export default function DeveloperLogsPage() {
     queryFn: () => clientFetch<Paginated<PublicUser>>('/users?limit=200'),
   });
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['audit-logs', resource, userId, from, to, page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
@@ -126,6 +133,8 @@ export default function DeveloperLogsPage() {
       <div className="rounded-md border border-border bg-surface">
         {isLoading ? (
           <TableSkeleton rows={8} cols={5} />
+        ) : isError ? (
+          <ErrorState error={error as Error} reset={() => refetch()} />
         ) : !data || data.items.length === 0 ? (
           <EmptyState icon={ScrollText} title="Kayıt bulunamadı" />
         ) : (

@@ -10,12 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@/components/ui/table';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
-import type { Paginated } from '@/lib/types';
+import type { Paginated, Warehouse } from '@/lib/types';
 
 const ROLE_LABEL: Record<string, string> = {
   USER: 'Kullanıcı',
@@ -79,19 +80,37 @@ export function UsersManager({
   const [deleting, setDeleting] = useState<PublicUser | null>(null);
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
+  // Developer'ın grupla-göster arayüzü (Admin + ekibi tek blokta) tüm listeyi tek seferde
+  // istemekle uyumludur — sayfa gezinmesi grupları böler. Bu yüzden sabit düşük bir limit
+  // yerine, bu görünüm için pratikte hiç dolmayacak yüksek bir üst sınır kullanılır.
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['users', restrictToUserRole ?? 'all'],
-    queryFn: () => clientFetch<Paginated<PublicUser>>('/users?limit=200'),
+    queryFn: () => clientFetch<Paginated<PublicUser>>('/users?limit=2000'),
   });
   const users = data?.items;
 
+  const matchesSearch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (u: PublicUser) =>
+      !q || u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
+  }, [search]);
+
   const searchedUsers = useMemo(() => {
     if (!users || !restrictToUserRole || !search.trim()) return users;
-    const q = search.trim().toLowerCase();
-    return users.filter(
-      (u) => u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q),
-    );
-  }, [users, restrictToUserRole, search]);
+    return users.filter(matchesSearch);
+  }, [users, restrictToUserRole, search, matchesSearch]);
+
+  // Bir Admin silinirse, sahibi olduğu tüm depolar/ürünler DB'de cascade ile silinir
+  // (Warehouse.owner → onDelete: Cascade). Onay diyaloğunda bunu somut sayılarla göstermek
+  // için, sadece diyalog açıkken ve hedef bir Admin'ken bu depo listesi çekilir.
+  const { data: deletingImpact } = useQuery({
+    queryKey: ['warehouses', 'deletion-impact', deleting?.id],
+    queryFn: () => clientFetch<Warehouse[]>(`/warehouses?ownerId=${deleting!.id}`),
+    enabled: !!deleting && deleting.role === 'ADMIN',
+  });
+  const deletingWarehouseCount = deletingImpact?.length ?? 0;
+  const deletingProductCount =
+    deletingImpact?.reduce((sum, w) => sum + w.productCount, 0) ?? 0;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => clientFetch(`/users/${id}`, { method: 'DELETE' }),
@@ -113,19 +132,38 @@ export function UsersManager({
     const regularUsers = all.filter((u) => u.role === 'USER');
     const adminIds = new Set(admins.map((a) => a.id));
 
+    const groups = admins
+      .map((admin) => ({
+        admin,
+        members: regularUsers.filter((u) => u.adminOwnerId === admin.id),
+      }))
+      .sort((a, b) => a.admin.name.localeCompare(b.admin.name, 'tr'));
+
+    if (restrictToUserRole || !search.trim()) {
+      return {
+        platformAdmins: all.filter((u) => u.role === 'PLATFORM_ADMIN'),
+        adminGroups: groups,
+        unassigned: regularUsers.filter(
+          (u) => !u.adminOwnerId || !adminIds.has(u.adminOwnerId),
+        ),
+      };
+    }
+
+    // Arama aktifken: Admin'in kendisi eşleşiyorsa tüm ekibiyle birlikte gösterilir;
+    // sadece bir ekip üyesi eşleşiyorsa grup sadece o üye(ler)le daralır.
     return {
-      platformAdmins: all.filter((u) => u.role === 'PLATFORM_ADMIN'),
-      adminGroups: admins
-        .map((admin) => ({
-          admin,
-          members: regularUsers.filter((u) => u.adminOwnerId === admin.id),
-        }))
-        .sort((a, b) => a.admin.name.localeCompare(b.admin.name, 'tr')),
-      unassigned: regularUsers.filter(
-        (u) => !u.adminOwnerId || !adminIds.has(u.adminOwnerId),
-      ),
+      platformAdmins: all.filter((u) => u.role === 'PLATFORM_ADMIN' && matchesSearch(u)),
+      adminGroups: groups
+        .filter((g) => matchesSearch(g.admin) || g.members.some(matchesSearch))
+        .map((g) => ({
+          admin: g.admin,
+          members: matchesSearch(g.admin) ? g.members : g.members.filter(matchesSearch),
+        })),
+      unassigned: regularUsers
+        .filter((u) => !u.adminOwnerId || !adminIds.has(u.adminOwnerId))
+        .filter(matchesSearch),
     };
-  }, [users]);
+  }, [users, restrictToUserRole, search, matchesSearch]);
 
   return (
     <div className="space-y-6">
@@ -135,17 +173,15 @@ export function UsersManager({
           <p className="mt-1 text-sm text-muted">{description}</p>
         </div>
         <div className="flex items-center gap-2">
-          {restrictToUserRole && (
-            <div className="relative">
-              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Ad veya kullanıcı adı ara…"
-                className="w-56 pl-8"
-              />
-            </div>
-          )}
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Ad veya kullanıcı adı ara…"
+              className="w-56 pl-8"
+            />
+          </div>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus size={16} />
             Yeni Kullanıcı
@@ -156,6 +192,10 @@ export function UsersManager({
       {isLoading ? (
         <div className="rounded-md border border-border bg-surface">
           <TableSkeleton rows={5} cols={5} />
+        </div>
+      ) : isError ? (
+        <div className="rounded-md border border-border bg-surface">
+          <ErrorState error={error as Error} reset={() => refetch()} />
         </div>
       ) : !users || users.length === 0 ? (
         <div className="rounded-md border border-border bg-surface">
@@ -215,6 +255,10 @@ export function UsersManager({
             </Tbody>
           </Table>
           )}
+        </div>
+      ) : search.trim() && platformAdmins.length === 0 && adminGroups.length === 0 && unassigned.length === 0 ? (
+        <div className="rounded-md border border-border bg-surface">
+          <EmptyState icon={Search} title="Aramanızla eşleşen kullanıcı yok" />
         </div>
       ) : (
         <div className="space-y-4">
@@ -345,7 +389,9 @@ export function UsersManager({
           title="Kullanıcıyı sil"
           description={
             deleting.role === 'ADMIN'
-              ? `"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz? Bu Admin'e ait tüm depolar ve içindeki ürünler de silinecek.`
+              ? deletingImpact
+                ? `"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz? Bu Admin'e ait ${deletingWarehouseCount} depo ve içindeki toplam ${deletingProductCount} ürün de kalıcı olarak silinecek.`
+                : `"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz? Bu Admin'e ait tüm depolar ve içindeki ürünler de silinecek. (Etki hesaplanıyor…)`
               : `"${deleting.name}" (${deleting.username}) hesabını kalıcı olarak silmek istediğinize emin misiniz?`
           }
           confirmLabel="Sil"

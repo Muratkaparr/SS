@@ -184,9 +184,9 @@ function WarehouseTreeNode({
           loading={deleteMutation.isPending}
           title="Depoyu sil"
           description={
-            warehouse.childCount > 0
-              ? `"${warehouse.name}" deposunu, içindeki ${warehouse.productCount} ürünü ve altındaki ${warehouse.childCount} alt depoyu kalıcı olarak silmek istediğinize emin misiniz?`
-              : `"${warehouse.name}" deposunu ve içindeki ${warehouse.productCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+            warehouse.totalDescendantWarehouseCount > 0
+              ? `"${warehouse.name}" deposunu, altındaki ${warehouse.totalDescendantWarehouseCount} alt depoyu ve bu ağaçtaki toplam ${warehouse.totalProductCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+              : `"${warehouse.name}" deposunu ve içindeki ${warehouse.totalProductCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
           }
           confirmLabel="Sil"
           danger
@@ -235,7 +235,17 @@ export function WarehouseTreeNav({
     : [];
 
   const isEmpty = isLoading || !roots || roots.length === 0;
-  if (isEmpty && !canManage) return null;
+  // Sidebar sessizce boş kalmamalı: Admin için zaten aşağıda "Yeni Ana Depo" kutusu
+  // görünür, ama User (canManage=false) için hiçbir eylem yoksa bile kısa bir açıklama
+  // gösterilir — aksi halde bu bölüm hiç var olmamış gibi görünür.
+  if (isEmpty && !canManage) {
+    if (isLoading) return null;
+    return (
+      <div className="ml-4 mt-0.5 border-l border-border pl-1">
+        <p className="px-2 py-1.5 text-xs text-muted">Henüz size atanmış bir depo yok.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-1">

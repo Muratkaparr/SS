@@ -109,6 +109,40 @@ describe('StockService', () => {
       expect(createCall[0].data.quantity).toBe(12);
     });
 
+    it('reads currentStock fresh inside the transaction, not the pre-transaction access-check read (race-condition fix)', async () => {
+      // 1. çağrı: getOwnedProduct() erişim kontrolü için yapılan OKUMA ÖNCESİ (bayat olabilir).
+      // 2. çağrı: transaction içindeki taze okuma — hesaplama BUNU kullanmalı.
+      prisma.product.findUnique
+        .mockResolvedValueOnce({ id: 'p1', warehouseId: 'w1', currentStock: 5 })
+        .mockResolvedValueOnce({ id: 'p1', warehouseId: 'w1', currentStock: 2 });
+
+      await service.createMovement(
+        { productId: 'p1', type: MovementType.OUT, quantity: 2 },
+        PLATFORM_ADMIN,
+      );
+
+      // Bayat değer (5) kullanılsaydı sonuç 3 olurdu; taze değer (2) kullanıldığında 0 olmalı.
+      const [stockUpdateCall] = prisma.product.update.mock.calls;
+      expect(stockUpdateCall[0]).toEqual({
+        where: { id: 'p1' },
+        data: { currentStock: 0 },
+      });
+    });
+
+    it('rejects an OUT movement based on the freshly-read (in-transaction) stock, even if the pre-check read was higher (overselling guard)', async () => {
+      prisma.product.findUnique
+        .mockResolvedValueOnce({ id: 'p1', warehouseId: 'w1', currentStock: 10 })
+        .mockResolvedValueOnce({ id: 'p1', warehouseId: 'w1', currentStock: 1 });
+
+      await expect(
+        service.createMovement(
+          { productId: 'p1', type: MovementType.OUT, quantity: 5 },
+          PLATFORM_ADMIN,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    });
+
     it('IN/OUT movements still record the plain delta as quantity', async () => {
       prisma.product.findUnique.mockResolvedValue({
         id: 'p1',

@@ -101,7 +101,7 @@ export class WarehousesService {
       include: { owner: { select: { id: true, name: true } } },
     });
     if (!warehouse) throw new NotFoundException('Depo bulunamadı');
-    this.assertOwnership(warehouse, actor);
+    await this.assertViewable(warehouse, actor);
     return this.withStats(warehouse);
   }
 
@@ -306,22 +306,48 @@ export class WarehousesService {
     }
   }
 
+  /**
+   * `assertOwnership`'in üzerine, USER rolü için ayrıca `WarehouseAccess` kısıtını
+   * da uygular (gezinme/breadcrumb amaçlı — atalar dahil, bkz. getNavigableWarehouseIds).
+   * `findOne` tek depo detayında meta veri (isim, sayaçlar) sızdırmaması için gerekli;
+   * findAll zaten bu kontrolü kendi sorgusunda uyguluyor.
+   */
+  private async assertViewable(warehouse: Warehouse, actor: User) {
+    this.assertOwnership(warehouse, actor);
+    if (actor.role === 'USER') {
+      const navigableIds = await getNavigableWarehouseIds(this.prisma, actor);
+      if (!navigableIds.includes(warehouse.id)) {
+        throw new ForbiddenException('Bu depoya erişiminiz yok');
+      }
+    }
+  }
+
   private async withStats(
     warehouse: Warehouse & { owner?: { id: string; name: string } },
   ) {
-    const [products, userCount, childCount] = await Promise.all([
-      this.prisma.product.findMany({
-        where: { warehouseId: warehouse.id },
-        select: { currentStock: true, criticalLevel: true },
-      }),
-      this.prisma.user.count({
-        where: {
-          isActive: true,
-          OR: [{ id: warehouse.ownerId }, { adminOwnerId: warehouse.ownerId }],
-        },
-      }),
-      this.prisma.warehouse.count({ where: { parentId: warehouse.id } }),
-    ]);
+    // Silme onayında gösterilecek gerçek etki için tüm alt ağaç (torunlar
+    // dahil) gerekiyor — `childCount` kasıtlı olarak sadece DİREKT çocukları
+    // sayar (sidebar/navigasyon "yaprak mı" sorusuna cevap verir), bu yüzden
+    // ayrı bir alan olarak hesaplanır.
+    const subtreeIds = await getWarehouseSubtreeIds(this.prisma, warehouse.id);
+
+    const [products, userCount, childCount, totalProductCount] =
+      await Promise.all([
+        this.prisma.product.findMany({
+          where: { warehouseId: warehouse.id },
+          select: { currentStock: true, criticalLevel: true },
+        }),
+        this.prisma.user.count({
+          where: {
+            isActive: true,
+            OR: [{ id: warehouse.ownerId }, { adminOwnerId: warehouse.ownerId }],
+          },
+        }),
+        this.prisma.warehouse.count({ where: { parentId: warehouse.id } }),
+        this.prisma.product.count({
+          where: { warehouseId: { in: subtreeIds } },
+        }),
+      ]);
 
     const criticalCount = products.filter(
       (p) => p.criticalLevel > 0 && p.currentStock <= p.criticalLevel,
@@ -337,6 +363,8 @@ export class WarehousesService {
       includeInParentTotal: warehouse.includeInParentTotal,
       allChildrenLabel: warehouse.allChildrenLabel,
       childCount,
+      totalDescendantWarehouseCount: subtreeIds.length - 1,
+      totalProductCount,
       createdAt: warehouse.createdAt,
       productCount: products.length,
       criticalCount,

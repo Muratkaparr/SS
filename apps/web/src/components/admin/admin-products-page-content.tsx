@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, CopyPlus, FolderOpen, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,14 +12,16 @@ import { ProductsExplorer } from '@/components/products/products-explorer';
 import { WarehouseTabs } from '@/components/products/warehouse-tabs';
 import { Button } from '@/components/ui/button';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
+import { ErrorState } from '@/components/ui/error-state';
 import { clientFetch } from '@/lib/client-fetch';
 import type { Product, Warehouse } from '@/lib/types';
 import { useWarehouseContext } from '@/lib/use-warehouse-context';
 import { ALL_WAREHOUSES_ID } from '@/lib/warehouse-constants';
 
 export function AdminProductsPageContent({ path }: { path: string[] }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const { currentParentId, breadcrumb, allLabel, renameAllLabel, preselectedWarehouseId } =
+  const { currentParentId, breadcrumb, allLabel, renameAllLabel, preselectedWarehouseId, contextError } =
     useWarehouseContext(path);
   const [activeWarehouseId, setActiveWarehouseId] = useState<string | null>(null);
   const isAllWarehouses = activeWarehouseId === ALL_WAREHOUSES_ID;
@@ -61,6 +64,19 @@ export function AdminProductsPageContent({ path }: { path: string[] }) {
       setPageTitle(titleValue.trim());
       setEditingTitle(false);
     }
+  }
+
+  if (contextError) {
+    return (
+      <ErrorState
+        error={
+          new Error(
+            'Bu depoya artık erişilemiyor — silinmiş veya taşınmış olabilir.',
+          )
+        }
+        reset={() => router.push('/admin/products')}
+      />
+    );
   }
 
   return (

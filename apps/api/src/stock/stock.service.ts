@@ -44,7 +44,9 @@ export class StockService {
   }
 
   async createMovement(dto: CreateMovementDto, actor: User) {
-    const product = await this.getOwnedProduct(dto.productId, actor);
+    // Erişim kontrolü transaction dışında yapılır; stok miktarı ise aşağıda
+    // transaction İÇİNDE taze okunur — bkz. not.
+    await this.getOwnedProduct(dto.productId, actor);
 
     if (dto.type !== MovementType.ADJUSTMENT && dto.quantity < 1) {
       throw new BadRequestException(
@@ -52,30 +54,41 @@ export class StockService {
       );
     }
 
-    let delta: number;
-    let nextStock: number;
-    let reason = dto.reason;
-
-    if (dto.type === MovementType.ADJUSTMENT) {
-      // "Düzeltme (sayım)" girilen değeri delta değil, yeni mutlak stok toplamı olarak yorumlar.
-      delta = dto.quantity - product.currentStock;
-      nextStock = dto.quantity;
-      const deltaLabel = `${delta >= 0 ? '+' : ''}${delta}`;
-      reason = dto.reason
-        ? `${dto.reason} (yeni toplam: ${dto.quantity}, değişim: ${deltaLabel})`
-        : `Sayım düzeltmesi — yeni toplam: ${dto.quantity} (değişim: ${deltaLabel})`;
-    } else {
-      delta = dto.type === MovementType.OUT ? -dto.quantity : dto.quantity;
-      nextStock = product.currentStock + delta;
-    }
-
-    if (nextStock < 0) {
-      throw new BadRequestException(
-        `Yetersiz stok: mevcut ${product.currentStock}, çıkarılmak istenen ${dto.quantity}`,
-      );
-    }
-
     const movement = await this.prisma.$transaction(async (tx) => {
+      // `currentStock` transaction başlamadan ÖNCE okunursa, eşzamanlı iki
+      // hareket aynı bayat değerden hesap yapıp birbirinin yazdığını
+      // ("lost update") geçersiz kılabilir ve yetersiz-stok kontrolü de bu
+      // bayat veriye dayanacağından paralel OUT istekleri stoğu negatife
+      // düşürebilir (overselling). Bu yüzden okuma-hesapla-yaz üçlüsü tek
+      // transaction içinde yapılıyor.
+      const product = await tx.product.findUnique({
+        where: { id: dto.productId },
+      });
+      if (!product) throw new NotFoundException('Ürün bulunamadı');
+
+      let delta: number;
+      let nextStock: number;
+      let reason = dto.reason;
+
+      if (dto.type === MovementType.ADJUSTMENT) {
+        // "Düzeltme (sayım)" girilen değeri delta değil, yeni mutlak stok toplamı olarak yorumlar.
+        delta = dto.quantity - product.currentStock;
+        nextStock = dto.quantity;
+        const deltaLabel = `${delta >= 0 ? '+' : ''}${delta}`;
+        reason = dto.reason
+          ? `${dto.reason} (yeni toplam: ${dto.quantity}, değişim: ${deltaLabel})`
+          : `Sayım düzeltmesi — yeni toplam: ${dto.quantity} (değişim: ${deltaLabel})`;
+      } else {
+        delta = dto.type === MovementType.OUT ? -dto.quantity : dto.quantity;
+        nextStock = product.currentStock + delta;
+      }
+
+      if (nextStock < 0) {
+        throw new BadRequestException(
+          `Yetersiz stok: mevcut ${product.currentStock}, çıkarılmak istenen ${dto.quantity}`,
+        );
+      }
+
       const created = await tx.stockMovement.create({
         data: {
           productId: dto.productId,

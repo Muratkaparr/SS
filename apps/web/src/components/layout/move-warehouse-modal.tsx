@@ -44,9 +44,13 @@ export function MoveWarehouseModal({
   const [targetId, setTargetId] = useState(warehouse.parentId ?? ROOT_VALUE);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // `ownerId` her zaman gönderilir: Platform Admin için `/warehouses` parametresiz TÜM
+  // sahiplerin depolarını döner (bkz. warehouses.service.ts findAll) — bu olmadan Developer
+  // panelinden açıldığında hedef listesi başka Admin'lerin depolarını da gösterirdi
+  // (backend zaten reddeder ama kullanıcıya net olmayan bir hata olarak yansırdı).
   const { data: allWarehouses } = useQuery({
-    queryKey: ['warehouses', 'flat-all'],
-    queryFn: () => clientFetch<Warehouse[]>('/warehouses'),
+    queryKey: ['warehouses', 'flat-all', warehouse.ownerId],
+    queryFn: () => clientFetch<Warehouse[]>(`/warehouses?ownerId=${warehouse.ownerId}`),
     enabled: open,
   });
 

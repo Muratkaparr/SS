@@ -78,6 +78,7 @@ model User {
   rootAllWarehousesLabel String?
 
   ownedWarehouses Warehouse[]
+  categories      Category[]
   stockMovements  StockMovement[]
   auditLogs       AuditLog[]
   refreshTokens   RefreshToken[]
@@ -113,8 +114,15 @@ model RefreshToken {
 
 model Category {
   id       String    @id @default(uuid())
-  name     String    @unique
+  name     String
   products Product[]
+
+  // Kategoriler Admin'e özeldir — bir Admin'in kategori isimleri başka Admin'lere
+  // sızmamalı/karışmamalı (bkz. categories.service.ts findAll/update/remove).
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, name])
 }
 
 model Product {

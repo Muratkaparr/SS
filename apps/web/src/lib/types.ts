@@ -28,7 +28,13 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
   /** Sadece "Bütün Ürünler" görünümünde, aynı isme sahip ürünler ortak alanda birleştirildiğinde dolar. */
-  mergedWarehouses?: { id: string; productId: string; name: string; stock: number }[];
+  mergedWarehouses?: {
+    id: string;
+    productId: string;
+    name: string;
+    stock: number;
+    criticalLevel: number;
+  }[];
 }
 
 export interface Paginated<T> {
@@ -101,6 +107,10 @@ export interface Warehouse {
   allChildrenLabel: string;
   /** Direkt çocuk depo sayısı. */
   childCount: number;
+  /** Tüm alt ağaçtaki (torunlar dahil) depo sayısı — silme onayında kullanılır. */
+  totalDescendantWarehouseCount: number;
+  /** Bu depo + tüm alt ağacındaki toplam ürün sayısı — silme onayında kullanılır. */
+  totalProductCount: number;
   createdAt: string;
   productCount: number;
   criticalCount: number;

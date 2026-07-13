@@ -2,19 +2,36 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { ProductsExplorer } from '@/components/products/products-explorer';
 import { WarehouseTabs } from '@/components/products/warehouse-tabs';
+import { ErrorState } from '@/components/ui/error-state';
 import { useWarehouseContext } from '@/lib/use-warehouse-context';
 
 export function UserProductsPageContent({ path }: { path: string[] }) {
-  const { currentParentId, breadcrumb, allLabel, preselectedWarehouseId } = useWarehouseContext(path);
+  const router = useRouter();
+  const { currentParentId, breadcrumb, allLabel, preselectedWarehouseId, contextError } =
+    useWarehouseContext(path);
   const [activeWarehouseId, setActiveWarehouseId] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- bağlam değişince sekme seçimi sıfırlanmalı/yaprak depoda o depo önceden seçili gelmeli
     setActiveWarehouseId(preselectedWarehouseId);
   }, [currentParentId, preselectedWarehouseId]);
+
+  if (contextError) {
+    return (
+      <ErrorState
+        error={
+          new Error(
+            'Bu depoya artık erişilemiyor — silinmiş, taşınmış veya erişim yetkiniz kaldırılmış olabilir.',
+          )
+        }
+        reset={() => router.push('/panel/products')}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

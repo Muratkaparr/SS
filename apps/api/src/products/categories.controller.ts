@@ -35,8 +35,8 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Get()
-  findAll() {
-    return this.categoriesService.findAll();
+  findAll(@CurrentUser() actor: User) {
+    return this.categoriesService.findAll(actor);
   }
 
   @Post()

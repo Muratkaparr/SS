@@ -1,11 +1,16 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WarehousesService } from './warehouses.service';
 
 const ADMIN = { id: 'admin-1', role: 'ADMIN' } as User;
+const USER = { id: 'user-1', role: 'USER', adminOwnerId: 'admin-1' } as User;
 
 function baseWarehouse(overrides: Record<string, unknown> = {}) {
   return {
@@ -35,8 +40,9 @@ describe('WarehousesService', () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
-    product: { findMany: jest.Mock };
+    product: { findMany: jest.Mock; count: jest.Mock };
     user: { count: jest.Mock; update: jest.Mock };
+    warehouseAccess: { findMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let auditLog: { log: jest.Mock };
@@ -52,8 +58,12 @@ describe('WarehousesService', () => {
         update: jest.fn(),
         delete: jest.fn().mockResolvedValue({}),
       },
-      product: { findMany: jest.fn().mockResolvedValue([]) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
       user: { count: jest.fn().mockResolvedValue(0), update: jest.fn() },
+      warehouseAccess: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     auditLog = { log: jest.fn() };
@@ -216,6 +226,91 @@ describe('WarehousesService', () => {
         where: { id: 'w1' },
         data: { parentId: 'target-parent' },
         include: { owner: { select: { id: true, name: true } } },
+      });
+    });
+  });
+
+  describe('findOne', () => {
+    it('rejects a USER reading a warehouse outside their granted subtree (IDOR regression)', async () => {
+      // USER sadece 'w2'ye izinli; 'w1' aynı Admin'in havuzunda ama ayrı bir kök depo.
+      prisma.warehouse.findUnique.mockResolvedValue(
+        baseWarehouse({ id: 'w1', ownerId: 'admin-1' }),
+      );
+      prisma.warehouse.findMany.mockResolvedValue([
+        { id: 'w1', parentId: null, includeInParentTotal: true },
+        { id: 'w2', parentId: null, includeInParentTotal: true },
+      ]);
+      prisma.warehouseAccess.findMany.mockResolvedValue([
+        { warehouseId: 'w2' },
+      ]);
+
+      await expect(service.findOne('w1', USER)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('allows a USER to read a warehouse within their granted subtree', async () => {
+      prisma.warehouse.findUnique.mockResolvedValue(
+        baseWarehouse({ id: 'w2', ownerId: 'admin-1' }),
+      );
+      prisma.warehouse.findMany.mockResolvedValue([
+        { id: 'w1', parentId: null, includeInParentTotal: true },
+        { id: 'w2', parentId: null, includeInParentTotal: true },
+      ]);
+      prisma.warehouseAccess.findMany.mockResolvedValue([
+        { warehouseId: 'w2' },
+      ]);
+
+      const result = await service.findOne('w2', USER);
+      expect(result).toMatchObject({ id: 'w2' });
+    });
+
+    it('allows a USER with no explicit grants to read any warehouse in their pool (legacy default)', async () => {
+      prisma.warehouse.findUnique.mockResolvedValue(
+        baseWarehouse({ id: 'w1', ownerId: 'admin-1' }),
+      );
+      prisma.warehouse.findMany.mockResolvedValue([
+        { id: 'w1', parentId: null, includeInParentTotal: true },
+      ]);
+      prisma.warehouseAccess.findMany.mockResolvedValue([]);
+
+      const result = await service.findOne('w1', USER);
+      expect(result).toMatchObject({ id: 'w1' });
+    });
+
+    it('rejects an ADMIN reading a warehouse owned by a different admin', async () => {
+      prisma.warehouse.findUnique.mockResolvedValue(
+        baseWarehouse({ id: 'foreign', ownerId: 'someone-else' }),
+      );
+      await expect(service.findOne('foreign', ADMIN)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('counts the whole descendant subtree (not just direct children) for deletion-impact stats', async () => {
+      // root-1 > child-1 > grandchild-1 — silme onayının derin ağaçta gerçek etkiyi
+      // göstermesi için childCount (direkt) değil, alt ağacın TAMAMI sayılmalı.
+      prisma.warehouse.findUnique.mockResolvedValue(
+        baseWarehouse({ id: 'root-1', ownerId: 'admin-1' }),
+      );
+      prisma.warehouse.findMany.mockResolvedValue([
+        { id: 'root-1', parentId: null, includeInParentTotal: true },
+        { id: 'child-1', parentId: 'root-1', includeInParentTotal: true },
+        {
+          id: 'grandchild-1',
+          parentId: 'child-1',
+          includeInParentTotal: true,
+        },
+      ]);
+      // childCount (direkt çocuk) hesaplaması için ayrı bir count çağrısı.
+      prisma.warehouse.count.mockResolvedValueOnce(1);
+      prisma.product.count.mockResolvedValueOnce(5);
+
+      const result = await service.findOne('root-1', ADMIN);
+      expect(result).toMatchObject({
+        childCount: 1,
+        totalDescendantWarehouseCount: 2,
+        totalProductCount: 5,
       });
     });
   });

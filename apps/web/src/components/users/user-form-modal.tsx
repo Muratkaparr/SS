@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { Role, type PublicUser } from '@repo/shared-types';
 import { Button } from '@/components/ui/button';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { FieldError, Input, Label, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { WarehouseCheckTree } from '@/components/users/warehouse-check-tree';
@@ -78,6 +79,9 @@ export function UserFormModal({
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
+  // Rol değişikliği yüksek riskli bir işlem (PRODUCT.md) — form gönderilmeden önce
+  // ayrı, görsel olarak ağır bir onay adımı ister (DESIGN.md ilke 2).
+  const [pendingRoleChange, setPendingRoleChange] = useState<EditValues | null>(null);
 
   const { data: usersData } = useQuery({
     queryKey: ['users', 'all'],
@@ -98,6 +102,7 @@ export function UserFormModal({
   useEffect(() => {
     if (open) {
       setServerError(null);
+      setPendingRoleChange(null);
       if (user) {
         editForm.reset({
           name: user.name,
@@ -162,11 +167,16 @@ export function UserFormModal({
   const createOwnerId = createForm.watch('adminOwnerId');
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title={isEdit ? 'Kullanıcıyı Düzenle' : 'Yeni Kullanıcı'} className="max-w-md">
       {isEdit ? (
         <form
           onSubmit={editForm.handleSubmit((v) => {
             setServerError(null);
+            if (!restrictToUserRole && v.role !== user!.role) {
+              setPendingRoleChange(v);
+              return;
+            }
             editMutation.mutate(v);
           })}
           className="space-y-4"
@@ -359,5 +369,25 @@ export function UserFormModal({
         </form>
       )}
     </Modal>
+    {isEdit && (
+      <ConfirmModal
+        open={!!pendingRoleChange}
+        onClose={() => setPendingRoleChange(null)}
+        onConfirm={() => {
+          if (pendingRoleChange) editMutation.mutate(pendingRoleChange);
+          setPendingRoleChange(null);
+        }}
+        loading={editMutation.isPending}
+        title="Rol değişikliğini onayla"
+        description={
+          pendingRoleChange
+            ? `"${user!.name}" kullanıcısının rolünü ${ROLE_LABEL[user!.role]} → ${ROLE_LABEL[pendingRoleChange.role]} olarak değiştirmek üzeresiniz. Bu değişiklik anında etkili olur ve kullanıcının erişebildiği tüm verileri değiştirir. Emin misiniz?`
+            : ''
+        }
+        confirmLabel="Rolü Değiştir"
+        danger
+      />
+    )}
+    </>
   );
 }

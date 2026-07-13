@@ -133,7 +133,7 @@ describe('AuthService', () => {
       expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects a refresh token whose stored row has already been revoked (reuse)', async () => {
+    it('rejects a refresh token whose stored row has already been revoked (reuse), and revokes all of that user\'s active sessions', async () => {
       const { refreshToken } = await loginAsBob();
       prisma.refreshToken.findUnique.mockResolvedValue({
         id: 'whatever',
@@ -141,10 +141,34 @@ describe('AuthService', () => {
         revokedAt: new Date(),
         expiresAt: new Date(Date.now() + 60_000),
       });
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 2 });
 
       await expect(service.refresh(refreshToken)).rejects.toThrow(
         UnauthorizedException,
       );
+      // Reuse tespit edildiğinde çalınmış olabilecek token'ın ötesinde, kullanıcının
+      // TÜM aktif oturumları iptal edilmeli (tüm cihazlardan zorunlu çıkış).
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(auditLog.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u1',
+          action: 'REFRESH_TOKEN_REUSE_DETECTED',
+          resource: 'AUTH',
+        }),
+      );
+    });
+
+    it('rejects a token that simply does not exist in storage, without treating it as reuse', async () => {
+      const { refreshToken } = await loginAsBob();
+      prisma.refreshToken.findUnique.mockResolvedValue(null);
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
     });
 
     it('rejects a syntactically invalid token', async () => {

@@ -5,7 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Boxes, Check, GripVertical, Pencil, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
 import { isProductCritical, mergeByName } from '@/lib/merge-products';
@@ -13,6 +15,8 @@ import type { Paginated, Product, Warehouse } from '@/lib/types';
 import { ALL_WAREHOUSES_ID } from '@/lib/warehouse-constants';
 
 const ALL_LABEL_EDIT_KEY = '__all__';
+/** Bu dosyadaki ürün sorguları liste değil sayaç/rozet hesaplaması içindir — sayfalanmamalı. */
+const AGGREGATE_FETCH_LIMIT = 100000;
 
 export function WarehouseTabs({
   activeId,
@@ -50,12 +54,14 @@ export function WarehouseTabs({
   });
 
   /** "Bütün Ürünler" rozeti kendi (birleştirilmiş) görünümüne göre hesaplanır — depoların
-   * kendi kritik sayılarının toplamı değil. */
+   * kendi kritik sayılarının toplamı değil. Bu bir sayaç hesaplaması olduğu için (görüntülenen
+   * bir liste değil) limit sayfalanmaz — tüm ürünler alınmalı, aksi halde 100+ ürünlü bir
+   * ağaçta rozet sessizce yanlış (düşük) sayı gösterir. */
   const { data: allProducts } = useQuery({
     queryKey: ['products', 'warehouse-tabs-critical', contextKey],
     queryFn: () =>
       clientFetch<Paginated<Product>>(
-        `/products?limit=100${parentId ? `&parentAggregateId=${parentId}` : ''}`,
+        `/products?limit=${AGGREGATE_FETCH_LIMIT}${parentId ? `&parentAggregateId=${parentId}` : ''}`,
       ),
     enabled: (warehouses?.length ?? 0) > 0,
   });
@@ -171,6 +177,30 @@ export function WarehouseTabs({
 
   if (isLoading) {
     return <div className="h-9 w-64 animate-pulse rounded-sm bg-surface-2" />;
+  }
+
+  if (warehouses && warehouses.length === 0 && !creating) {
+    return (
+      <div className="rounded-md border border-dashed border-border bg-surface">
+        <EmptyState
+          icon={Boxes}
+          title={canManage ? 'Henüz depo eklenmedi' : 'Henüz size atanmış bir depo yok'}
+          description={
+            canManage
+              ? 'Ürünleri takip etmeye başlamak için ilk deponuzu oluşturun.'
+              : 'Bir yönetici size depo erişimi tanımladığında burada görünecek.'
+          }
+          action={
+            canManage ? (
+              <Button onClick={() => setCreating(true)}>
+                <Plus size={16} />
+                İlk Depoyu Ekle
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
+    );
   }
 
   const mergedProducts = allProducts ? mergeByName(allProducts.items) : [];
@@ -437,9 +467,9 @@ export function WarehouseTabs({
           loading={deleteMutation.isPending}
           title="Depoyu sil"
           description={
-            deleting.childCount > 0
-              ? `"${deleting.name}" deposunu, içindeki ${deleting.productCount} ürünü ve altındaki ${deleting.childCount} alt depoyu (ve onların tüm içeriğini) kalıcı olarak silmek istediğinize emin misiniz?`
-              : `"${deleting.name}" deposunu ve içindeki ${deleting.productCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+            deleting.totalDescendantWarehouseCount > 0
+              ? `"${deleting.name}" deposunu, altındaki ${deleting.totalDescendantWarehouseCount} alt depoyu ve bu ağaçtaki toplam ${deleting.totalProductCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+              : `"${deleting.name}" deposunu ve içindeki ${deleting.totalProductCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
           }
           confirmLabel="Sil"
           danger

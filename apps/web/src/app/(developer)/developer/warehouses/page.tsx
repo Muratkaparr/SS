@@ -8,6 +8,7 @@ import {
   Boxes,
   Building2,
   ChevronRight,
+  FolderInput,
   MapPin,
   Pencil,
   Plus,
@@ -21,7 +22,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { TableSkeleton } from '@/components/ui/skeleton';
+import { MoveWarehouseModal } from '@/components/layout/move-warehouse-modal';
 import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
 import type { Warehouse } from '@/lib/types';
@@ -49,9 +52,16 @@ export default function DeveloperWarehousesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Warehouse | null>(null);
   const [deleting, setDeleting] = useState<Warehouse | null>(null);
+  const [moving, setMoving] = useState<Warehouse | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const { data: warehouses, isLoading } = useQuery({
+  const {
+    data: warehouses,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => clientFetch<Warehouse[]>('/warehouses'),
   });
@@ -158,6 +168,10 @@ export default function DeveloperWarehousesPage() {
       {isLoading ? (
         <div className="rounded-md border border-border bg-surface">
           <TableSkeleton rows={4} cols={4} />
+        </div>
+      ) : isError ? (
+        <div className="rounded-md border border-border bg-surface">
+          <ErrorState error={error as Error} reset={() => refetch()} />
         </div>
       ) : !warehouses || warehouses.length === 0 ? (
         <div className="rounded-md border border-border bg-surface">
@@ -302,6 +316,17 @@ export default function DeveloperWarehousesPage() {
                             type="button"
                             onClick={(e) => {
                               e.preventDefault();
+                              setMoving(w);
+                            }}
+                            title="Başka bir üst depoya taşı"
+                            className="flex h-7 w-7 items-center justify-center rounded-sm bg-surface text-muted shadow-sm transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-accent"
+                          >
+                            <FolderInput size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
                               setDeleting(w);
                             }}
                             title="Depoyu sil"
@@ -324,6 +349,9 @@ export default function DeveloperWarehousesPage() {
       {editing && (
         <WarehouseFormModal open={!!editing} onClose={() => setEditing(null)} warehouse={editing} />
       )}
+      {moving && (
+        <MoveWarehouseModal warehouse={moving} open={!!moving} onClose={() => setMoving(null)} />
+      )}
       {deleting && (
         <ConfirmModal
           open={!!deleting}
@@ -332,9 +360,9 @@ export default function DeveloperWarehousesPage() {
           loading={deleteMutation.isPending}
           title="Depoyu sil"
           description={
-            deleting.childCount > 0
-              ? `"${deleting.name}" deposunu, içindeki ${deleting.productCount} ürünü ve altındaki ${deleting.childCount} alt depoyu kalıcı olarak silmek istediğinize emin misiniz?`
-              : `"${deleting.name}" deposunu ve içindeki ${deleting.productCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+            deleting.totalDescendantWarehouseCount > 0
+              ? `"${deleting.name}" deposunu, altındaki ${deleting.totalDescendantWarehouseCount} alt depoyu ve bu ağaçtaki toplam ${deleting.totalProductCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
+              : `"${deleting.name}" deposunu ve içindeki ${deleting.totalProductCount} ürünü kalıcı olarak silmek istediğinize emin misiniz?`
           }
           confirmLabel="Sil"
           danger

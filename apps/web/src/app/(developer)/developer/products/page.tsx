@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Boxes, Building2, Package, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@/components/ui/table';
@@ -33,9 +34,11 @@ export default function DeveloperProductsPage() {
     queryFn: () => clientFetch<Warehouse[]>('/warehouses'),
   });
 
-  const { data, isLoading } = useQuery({
+  // Bu sayfa "sistem geneli, eksiksiz" bir görünüm vaat ediyor — sayfalanmıyor, bu yüzden
+  // sabit düşük bir limit yerine pratikte hiç dolmayacak yüksek bir üst sınır kullanılır.
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['products', 'developer-all'],
-    queryFn: () => clientFetch<Paginated<Product>>('/products?limit=500'),
+    queryFn: () => clientFetch<Paginated<Product>>('/products?limit=100000'),
   });
 
   /** Her deponun sahibi (Admin) adı — depo listesinden türetilir, ürün satırlarında gösterilir. */
@@ -104,6 +107,10 @@ export default function DeveloperProductsPage() {
       {isLoading ? (
         <div className="rounded-md border border-border bg-surface">
           <TableSkeleton rows={8} cols={6} />
+        </div>
+      ) : isError ? (
+        <div className="rounded-md border border-border bg-surface">
+          <ErrorState error={error as Error} reset={() => refetch()} />
         </div>
       ) : products.length === 0 ? (
         <div className="rounded-md border border-border bg-surface">

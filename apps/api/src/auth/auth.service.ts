@@ -95,7 +95,25 @@ export class AuthService {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { id: payload.jti },
     });
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+
+    if (stored?.revokedAt) {
+      // Reuse tespiti: bu jti daha önce rotasyon/logout ile iptal edilmişti, yine de
+      // kullanılmaya çalışılıyor — bu, çalınmış bir refresh token'ın işareti olabilir.
+      // Pasif ret yerine, güvenlik önlemi olarak kullanıcının TÜM aktif oturumları
+      // iptal edilir (tüm cihazlardan zorunlu çıkış) ve olay audit log'a yazılır.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await this.auditLog.log({
+        userId: stored.userId,
+        action: 'REFRESH_TOKEN_REUSE_DETECTED',
+        resource: 'AUTH',
+      });
+      throw new UnauthorizedException('Geçersiz veya süresi dolmuş oturum');
+    }
+
+    if (!stored || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Geçersiz veya süresi dolmuş oturum');
     }
 

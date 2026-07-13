@@ -3,9 +3,11 @@ import type { Product } from '@/lib/types';
 
 /**
  * "Bütün Ürünler" görünümünde, farklı depolardaki aynı isme sahip ürünleri tek satırda
- * toplar (stok toplanır). Kritik seviye toplanmaz — varsa "Merkez Depo" satırı temsilci
- * olarak seçilir ve kendi yazılan kritik seviye değeri aynen gösterilir; düzenleme/silme
- * gibi aksiyonlar da bu temsilci ürün üzerinden çalışmaya devam eder.
+ * toplar (stok toplanır). Kritik seviye TOPLANMAZ ve tek bir temsilci değere indirgenmez —
+ * her depo kendi kritik seviyesini `mergedWarehouses` içinde taşımaya devam eder, çünkü
+ * depolar arası eşiklerin toplamı/ortalaması anlamlı bir sayı değildir (bkz. isProductCritical).
+ * Gösterimde varsa "Merkez Depo" satırı temsilci seçilir; düzenleme/silme gibi aksiyonlar
+ * da bu temsilci ürün üzerinden çalışmaya devam eder.
  */
 export function mergeByName(products: Product[]): Product[] {
   const groups = new Map<string, Product[]>();
@@ -29,11 +31,23 @@ export function mergeByName(products: Product[]): Product[] {
         productId: p.id,
         name: p.warehouse?.name ?? '—',
         stock: p.currentStock,
+        criticalLevel: p.criticalLevel,
       })),
     };
   });
 }
 
+/**
+ * Birleştirilmiş bir satırda TOPLAM stoğu temsilci depronun tek eşiğiyle kıyaslamak yanlış
+ * sonuç verir: örn. 3 depoda da (eşik 10, stok 5) gerçekte hepsi kritikken toplam stok 15,
+ * tek eşik 10 ile "kritik değil" çıkar. Bu yüzden birleştirilmiş satırlarda kriticality, alt
+ * depolardan EN AZ BİRİNİN kendi eşiğine göre kritik olup olmadığına (OR) bakılarak belirlenir.
+ */
 export function isProductCritical(product: Product): boolean {
-  return product.currentStock <= product.criticalLevel;
+  if (product.mergedWarehouses && product.mergedWarehouses.length > 0) {
+    return product.mergedWarehouses.some(
+      (w) => w.criticalLevel > 0 && w.stock <= w.criticalLevel,
+    );
+  }
+  return product.criticalLevel > 0 && product.currentStock <= product.criticalLevel;
 }

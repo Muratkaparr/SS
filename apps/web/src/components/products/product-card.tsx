@@ -3,17 +3,18 @@ import { PhotoUploadButton } from '@/components/admin/photo-upload-button';
 import { Badge } from '@/components/ui/badge';
 import { StockStepper } from '@/components/products/stock-stepper';
 import { productImageUrl } from '@/lib/image-url';
+import { isProductCritical } from '@/lib/merge-products';
 import type { Product } from '@/lib/types';
 
 function stockTone(product: Product): 'danger' | 'warning' | 'success' {
   if (product.currentStock <= 0) return 'danger';
-  if (product.currentStock <= product.criticalLevel) return 'warning';
+  if (isProductCritical(product)) return 'warning';
   return 'success';
 }
 
 function stockLabel(product: Product): string {
   if (product.currentStock <= 0) return 'Tükendi';
-  if (product.currentStock <= product.criticalLevel) return 'Kritik';
+  if (isProductCritical(product)) return 'Kritik';
   return 'Normal';
 }
 

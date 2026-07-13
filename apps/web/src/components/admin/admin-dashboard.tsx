@@ -22,9 +22,11 @@ export function AdminDashboard() {
     queryFn: () => clientFetch<StockAlert[]>('/stock/alerts'),
   });
 
+  // Aşağıdaki "Stoğu Tükenen" tablosu bir sayaç/özet değil, tam listedir — sabit düşük bir
+  // limit kullanılırsa 100+ ürünlü bir depoda bazı tükenen ürünler listeden sessizce düşer.
   const { data: productsData } = useQuery({
     queryKey: ['products', '', '', false, 'out-of-stock'],
-    queryFn: () => clientFetch<Paginated<Product>>('/products?limit=100'),
+    queryFn: () => clientFetch<Paginated<Product>>('/products?limit=100000'),
   });
 
   const outOfStock = (productsData?.items ?? []).filter((p) => p.currentStock <= 0);

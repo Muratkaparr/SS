@@ -77,9 +77,9 @@ async function seedWarehouseProducts(
 ) {
   for (const seed of productSeeds) {
     const category = await prisma.category.upsert({
-      where: { name: seed.categoryName },
+      where: { ownerId_name: { ownerId: adminId, name: seed.categoryName } },
       update: {},
-      create: { name: seed.categoryName },
+      create: { name: seed.categoryName, ownerId: adminId },
     });
 
     const product = await prisma.product.upsert({

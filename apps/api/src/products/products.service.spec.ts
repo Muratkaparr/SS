@@ -213,6 +213,62 @@ describe('ProductsService', () => {
       expect(result).toEqual(existingInTarget);
     });
 
+    it('rejects a quick-add merge when the same-named product in the target warehouse has a different category', async () => {
+      const source = baseProduct({
+        id: 'source-1',
+        name: 'Widget',
+        warehouseId: 'w1',
+        categoryId: 'cat-electronics',
+      });
+      const existingInTarget = baseProduct({
+        id: 'existing-1',
+        name: 'Widget',
+        warehouseId: 'w2',
+        categoryId: 'cat-furniture',
+      });
+
+      prisma.product.findUnique
+        .mockResolvedValueOnce(source)
+        .mockResolvedValueOnce(existingInTarget);
+
+      await expect(
+        service.duplicate(
+          'source-1',
+          { targetWarehouseId: 'w2', openingStock: 3 },
+          PLATFORM_ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.product.create).not.toHaveBeenCalled();
+      expect(stockService.createMovement).not.toHaveBeenCalled();
+    });
+
+    it('rejects a quick-add merge when the same-named product in the target warehouse has a different unit', async () => {
+      const source = baseProduct({
+        id: 'source-1',
+        name: 'Widget',
+        warehouseId: 'w1',
+        unit: 'adet',
+      });
+      const existingInTarget = baseProduct({
+        id: 'existing-1',
+        name: 'Widget',
+        warehouseId: 'w2',
+        unit: 'kg',
+      });
+
+      prisma.product.findUnique
+        .mockResolvedValueOnce(source)
+        .mockResolvedValueOnce(existingInTarget);
+
+      await expect(
+        service.duplicate(
+          'source-1',
+          { targetWarehouseId: 'w2', openingStock: 3 },
+          PLATFORM_ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
     it('creates a new product when the target warehouse has no name conflict', async () => {
       const source = baseProduct({
         id: 'source-1',

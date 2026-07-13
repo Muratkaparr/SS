@@ -354,71 +354,66 @@ export class ProductsService {
       throw new ConflictException('Ürün zaten bu depoda');
     }
 
-    const existing = await this.prisma.product.findUnique({
-      where: {
-        warehouseId_name: {
-          warehouseId: dto.targetWarehouseId,
-          name: source.name,
-        },
-      },
-    });
-
-    // Hedef depoda aynı isimde ürün zaten varsa hata vermek yerine hızlı ekleme yapılır:
-    // yeni kayıt oluşturmadan, girilen miktar doğrudan mevcut ürünün stoğuna eklenir.
-    if (existing) {
-      if (dto.openingStock && dto.openingStock > 0) {
-        await this.stockService.createMovement(
-          {
-            productId: existing.id,
-            type: MovementType.IN,
-            quantity: dto.openingStock,
-            reason: `${source.name} — başka depodan hızlı eklendi`,
+    // Varlık kontrolü + oluşturma tek transaction içinde yapılır: SQLite yazma
+    // transaction'ları sırayla yürüdüğü için bu, eşzamanlı iki "hızlı ekle"
+    // isteğinin ikisinin de "yok" görüp unique constraint'e çarpmasını
+    // (P2002 → beklenmedik 500) engeller — ikinci istek artık ilkinin
+    // oluşturduğu kaydı görüp "stoğa ekle" yoluna düşer.
+    const { product: targetProduct, merged } = await this.prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.product.findUnique({
+          where: {
+            warehouseId_name: {
+              warehouseId: dto.targetWarehouseId,
+              name: source.name,
+            },
           },
-          actor,
-        );
-      }
+        });
 
-      await this.auditLog.log({
-        userId: actor.id,
-        action: 'UPDATE',
-        resource: 'PRODUCT',
-        resourceId: existing.id,
-        meta: {
-          name: existing.name,
-          quickAddFrom: source.id,
-          addedQuantity: dto.openingStock ?? 0,
-        },
-      });
+        // Hedef depoda aynı isimde ürün zaten varsa hata vermek yerine hızlı
+        // ekleme yapılır — AMA sadece kategori ve birim de eşleşiyorsa. Aksi
+        // halde farklı ürünlerin stokları sessizce birleştirilmiş olur.
+        if (existing) {
+          if (
+            existing.categoryId !== source.categoryId ||
+            existing.unit !== source.unit
+          ) {
+            throw new ConflictException(
+              'Hedef depoda bu isimde ama farklı kategori/birime sahip bir ürün zaten var — hızlı eklenemedi',
+            );
+          }
+          return { product: existing, merged: true as const };
+        }
 
-      return this.findOne(existing.id, actor);
-    }
+        const last = await tx.product.findFirst({
+          where: { warehouseId: dto.targetWarehouseId },
+          orderBy: { sortOrder: 'desc' },
+          select: { sortOrder: true },
+        });
 
-    const last = await this.prisma.product.findFirst({
-      where: { warehouseId: dto.targetWarehouseId },
-      orderBy: { sortOrder: 'desc' },
-      select: { sortOrder: true },
-    });
-
-    const product = await this.prisma.product.create({
-      data: {
-        name: source.name,
-        description: source.description,
-        unit: source.unit,
-        categoryId: source.categoryId,
-        warehouseId: dto.targetWarehouseId,
-        sortOrder: (last?.sortOrder ?? -1) + 1,
-        leadTimeDays: source.leadTimeDays,
-        safetyMarginDays: source.safetyMarginDays,
-        criticalLevel: source.criticalLevel,
-        criticalLevelManual: source.criticalLevel,
+        const created = await tx.product.create({
+          data: {
+            name: source.name,
+            description: source.description,
+            unit: source.unit,
+            categoryId: source.categoryId,
+            warehouseId: dto.targetWarehouseId,
+            sortOrder: (last?.sortOrder ?? -1) + 1,
+            leadTimeDays: source.leadTimeDays,
+            safetyMarginDays: source.safetyMarginDays,
+            criticalLevel: source.criticalLevel,
+            criticalLevelManual: source.criticalLevel,
+          },
+        });
+        return { product: created, merged: false as const };
       },
-    });
+    );
 
     if (dto.openingStock && dto.openingStock > 0) {
       await this.stockService.createMovement(
         {
-          productId: product.id,
-          type: MovementType.ADJUSTMENT,
+          productId: targetProduct.id,
+          type: merged ? MovementType.IN : MovementType.ADJUSTMENT,
           quantity: dto.openingStock,
           reason: `${source.name} — başka depodan hızlı eklendi`,
         },
@@ -428,15 +423,21 @@ export class ProductsService {
 
     await this.auditLog.log({
       userId: actor.id,
-      action: 'CREATE',
+      action: merged ? 'UPDATE' : 'CREATE',
       resource: 'PRODUCT',
-      resourceId: product.id,
-      meta: {
-        name: product.name,
-        duplicatedFrom: source.id,
-      },
+      resourceId: targetProduct.id,
+      meta: merged
+        ? {
+            name: targetProduct.name,
+            quickAddFrom: source.id,
+            addedQuantity: dto.openingStock ?? 0,
+          }
+        : {
+            name: targetProduct.name,
+            duplicatedFrom: source.id,
+          },
     });
 
-    return this.findOne(product.id, actor);
+    return this.findOne(targetProduct.id, actor);
   }
 }
