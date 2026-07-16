@@ -7,6 +7,8 @@ on:
 jobs:
   deploy:
     runs-on: [self-hosted, stockfaster]
+    env:
+      DATABASE_URL: "file:./prod.db"
     steps:
       - uses: actions/checkout@v4
 
