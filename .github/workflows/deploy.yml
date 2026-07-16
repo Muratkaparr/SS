@@ -1,0 +1,41 @@
+name: Deploy to VDS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, stockfaster]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync source to deployment folder
+        shell: pwsh
+        run: |
+          robocopy "$env:GITHUB_WORKSPACE" "C:\sites\stockfaster" /MIR `
+            /XD .git node_modules dist .next .turbo uploads `
+            /XF .env .env.local *.db *.db-journal `
+            /R:2 /W:2 /NFL /NDL
+          if ($LASTEXITCODE -ge 8) { exit 1 } else { exit 0 }
+
+      - name: Install dependencies
+        working-directory: C:\sites\stockfaster
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Run database migrations
+        working-directory: C:\sites\stockfaster\apps\api
+        shell: pwsh
+        run: pnpm prisma migrate deploy
+
+      - name: Build
+        working-directory: C:\sites\stockfaster
+        shell: pwsh
+        run: pnpm turbo run build
+
+      - name: Restart services
+        shell: pwsh
+        run: |
+          Restart-Service stockfaster-api
+          Restart-Service stockfaster-web
