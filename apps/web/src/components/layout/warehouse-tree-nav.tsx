@@ -310,7 +310,7 @@ export function WarehouseTreeNav({
             Yeni Ana Depo
           </button>
         ))}
-      {!isEmpty && (
+      {roots && roots.length > 1 && (
         <Link
           href={basePath}
           className={cn(
