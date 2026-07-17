@@ -35,10 +35,12 @@ jobs:
         working-directory: C:\sites\stockfaster
         shell: powershell
         run: |
-          pnpm turbo run build --ui=stream --no-daemon *> C:\actions-runner\build-debug.log
-          $ec = $LASTEXITCODE
-          Get-Content C:\actions-runner\build-debug.log
-          exit $ec
+          pnpm --filter @repo/shared-types build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --filter @repo/api build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --filter @repo/web build
+          exit $LASTEXITCODE
 
       - name: Restart services
         shell: powershell
