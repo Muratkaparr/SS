@@ -34,7 +34,11 @@ jobs:
       - name: Build
         working-directory: C:\sites\stockfaster
         shell: powershell
-        run: pnpm turbo run build
+        run: |
+          pnpm turbo run build --ui=stream *> C:\actions-runner\build-debug.log
+          $ec = $LASTEXITCODE
+          Get-Content C:\actions-runner\build-debug.log
+          exit $ec
 
       - name: Restart services
         shell: powershell
