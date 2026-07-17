@@ -101,14 +101,6 @@ export default function LoginPage() {
             Giriş yap
           </Button>
         </form>
-
-        <div className="mt-6 rounded-md border border-dashed border-border p-4 text-xs text-muted">
-          <p className="mb-1.5 font-medium text-ink">Demo hesaplar</p>
-          <p>Kullanıcı: kullanici</p>
-          <p>Admin: admin</p>
-          <p>Developer: developer</p>
-          <p className="mt-1">Şifre (hepsi): parola123</p>
-        </div>
       </div>
     </div>
   );

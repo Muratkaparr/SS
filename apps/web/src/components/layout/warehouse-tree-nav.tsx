@@ -4,8 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronRight, FolderInput, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Boxes, Check, ChevronRight, FolderInput, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import type { PublicUser } from '@repo/shared-types';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { cn } from '@/lib/cn';
 import { clientFetch } from '@/lib/client-fetch';
@@ -217,6 +218,14 @@ export function WarehouseTreeNav({
     queryFn: () => clientFetch<Warehouse[]>('/warehouses?parentId=root'),
   });
 
+  // Sekme şeridindeki "Bütün Ürünler" (rootAllWarehousesLabel) sekmesiyle aynı etiket —
+  // sidebar'da da en üstte, ana depoların üzerinde, hepsini birleşik gösteren bağlantı olarak.
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => clientFetch<PublicUser>('/auth/me'),
+  });
+  const allLabel = me?.rootAllWarehousesLabel || 'Bütün Ürünler';
+
   const createMutation = useMutation({
     mutationFn: (name: string) =>
       clientFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ name }) }),
@@ -301,6 +310,20 @@ export function WarehouseTreeNav({
             Yeni Ana Depo
           </button>
         ))}
+      {!isEmpty && (
+        <Link
+          href={basePath}
+          className={cn(
+            'flex items-center gap-1.5 rounded-sm py-1.5 pl-2.5 pr-1 text-sm font-medium transition-colors duration-150 ease-out-quart',
+            activePath.length === 0
+              ? 'bg-primary/15 text-primary'
+              : 'text-muted hover:bg-surface-hover hover:text-ink',
+          )}
+        >
+          <Boxes size={13} className="shrink-0" />
+          <span className="truncate">{allLabel}</span>
+        </Link>
+      )}
       {roots?.map((w) => (
         <WarehouseTreeNode
           key={w.id}
