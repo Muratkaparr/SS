@@ -270,7 +270,7 @@ export function UsersManager({
               </div>
               <div className="divide-y divide-border">
                 {platformAdmins.map((u) => (
-                  <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-medium text-ink">{u.name}</span>
                       {u.id === currentUserId && <span className="text-xs text-muted">(siz)</span>}
@@ -290,7 +290,7 @@ export function UsersManager({
 
           {adminGroups.map(({ admin, members }) => (
             <div key={admin.id} className="rounded-md border border-border bg-surface">
-              <div className="flex items-center justify-between gap-3 border-b border-border bg-surface-2 px-4 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-2 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
                   <Badge tone={ROLE_TONE.ADMIN} withIcon={false}>
                     {ROLE_LABEL.ADMIN}
@@ -319,7 +319,7 @@ export function UsersManager({
                     <div
                       key={u.id}
                       className={cn(
-                        'ml-4 flex items-center justify-between gap-3 border-l-2 border-accent/25 py-2.5 pl-6 pr-4',
+                        'ml-4 flex flex-wrap items-center justify-between gap-3 border-l-2 border-accent/25 py-2.5 pl-6 pr-4',
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-2">
@@ -347,7 +347,7 @@ export function UsersManager({
               </div>
               <div className="divide-y divide-border">
                 {unassigned.map((u) => (
-                  <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-medium text-ink">{u.name}</span>
                       <span className="truncate text-xs text-muted">({u.username})</span>

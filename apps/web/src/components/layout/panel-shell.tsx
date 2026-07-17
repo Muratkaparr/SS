@@ -28,7 +28,7 @@ export function PanelShell({
         <SidebarNav panel={panel} />
       </aside>
 
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-5">
           <p className="text-sm font-medium text-ink md:hidden">Depo Takip</p>
           <div className="hidden md:block" />
