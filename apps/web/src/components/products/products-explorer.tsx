@@ -38,6 +38,23 @@ function stockLabel(product: Product): string {
 
 type ViewMode = 'list' | 'grid';
 
+type GridSize = 'large' | 'medium' | 'small';
+
+const GRID_SIZE_STORAGE_KEY = 'products-grid-size';
+
+/** Kutucuk boyutuna göre grid kolon sayısı: bilgisayarda/telefonda istenen adetleri sabitler. */
+const GRID_SIZE_COLUMN_CLASSES: Record<GridSize, string> = {
+  large: 'grid-cols-2 md:grid-cols-4',
+  medium: 'grid-cols-4 md:grid-cols-8',
+  small: 'grid-cols-6 md:grid-cols-12',
+};
+
+const GRID_SIZE_OPTIONS: { value: GridSize; label: string; iconSize: number }[] = [
+  { value: 'large', label: 'Büyük kutucuklar', iconSize: 18 },
+  { value: 'medium', label: 'Orta kutucuklar', iconSize: 14 },
+  { value: 'small', label: 'Küçük kutucuklar', iconSize: 10 },
+];
+
 export function ProductsExplorer({
   view = 'list',
   renderActions,
@@ -76,6 +93,22 @@ export function ProductsExplorer({
   const [activeView, setActiveView] = useState<ViewMode>(view === 'toggle' ? 'grid' : view);
   const [dragId, setDragId] = useState<string | null>(null);
   const [order, setOrder] = useState<Product[] | null>(null);
+  const [gridSize, setGridSize] = useState<GridSize>('large');
+
+  // Tercih localStorage'da saklanır; sunucu tarafında erişilemediği için ilk render'dan
+  // sonra (mount effect'inde) okunup uygulanır.
+  useEffect(() => {
+    const stored = localStorage.getItem(GRID_SIZE_STORAGE_KEY);
+    if (stored === 'large' || stored === 'medium' || stored === 'small') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage'dan tek seferlik ilk okuma
+      setGridSize(stored);
+    }
+  }, []);
+
+  function handleGridSizeChange(size: GridSize) {
+    setGridSize(size);
+    localStorage.setItem(GRID_SIZE_STORAGE_KEY, size);
+  }
 
   const PAGE_SIZE = 50;
 
@@ -209,6 +242,27 @@ export function ProductsExplorer({
           </label>
         </div>
         <div className="flex items-center gap-2">
+          {activeView === 'grid' && (
+            <div className="flex items-center rounded-sm border border-border p-0.5">
+              {GRID_SIZE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleGridSizeChange(opt.value)}
+                  aria-label={opt.label}
+                  title={opt.label}
+                  className={cn(
+                    'flex h-7 w-7 items-center justify-center rounded-sm transition-colors duration-150 ease-out-quart',
+                    gridSize === opt.value
+                      ? 'bg-primary text-primary-ink'
+                      : 'text-muted hover:text-ink',
+                  )}
+                >
+                  <LayoutGrid size={opt.iconSize} />
+                </button>
+              ))}
+            </div>
+          )}
           {view === 'toggle' && (
             <div className="flex items-center rounded-sm border border-border p-0.5">
               <button
@@ -260,7 +314,7 @@ export function ProductsExplorer({
           />
         </div>
       ) : activeView === 'grid' ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
+        <div className={cn('grid gap-4', GRID_SIZE_COLUMN_CLASSES[gridSize])}>
           {displayProducts.map((product) => (
             <div
               key={product.id}
