@@ -11,7 +11,7 @@ import { FieldError, Input, Label } from '@/components/ui/input';
 
 const schema = z.object({
   username: z.string().min(1, 'Kullanıcı adı gerekli'),
-  password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
+  password: z.string().min(1, 'Şifre en az 1 karakter olmalı'),
 });
 
 type FormValues = z.infer<typeof schema>;

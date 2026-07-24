@@ -28,7 +28,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(6)
+  @MinLength(1)
   password?: string;
 
   /** Sadece Platform Admin bir USER hesabını başka bir Admin'in ekibine taşıyabilir. */

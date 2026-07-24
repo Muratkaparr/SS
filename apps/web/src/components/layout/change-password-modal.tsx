@@ -14,7 +14,7 @@ import { clientFetch } from '@/lib/client-fetch';
 const schema = z
   .object({
     currentPassword: z.string().min(1, 'Mevcut şifrenizi girin'),
-    newPassword: z.string().min(6, 'Yeni şifre en az 6 karakter olmalı'),
+    newPassword: z.string().min(1, 'Yeni şifre en az 1 karakter olmalı'),
     confirmPassword: z.string().min(1, 'Yeni şifrenizi tekrar girin'),
   })
   .refine((v) => v.newPassword === v.confirmPassword, {

@@ -24,7 +24,7 @@ const ROLE_LABEL: Record<Role, string> = {
 const createBaseSchema = z.object({
   name: z.string().min(2, 'İsim en az 2 karakter olmalı'),
   username: z.string().min(3, 'Kullanıcı adı en az 3 karakter olmalı'),
-  password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
+  password: z.string().min(1, 'Şifre en az 1 karakter olmalı'),
   role: z.nativeEnum(Role),
   adminOwnerId: z.string().optional(),
 });
@@ -35,7 +35,7 @@ const editBaseSchema = z.object({
   username: z.string().min(3, 'Kullanıcı adı en az 3 karakter olmalı').optional(),
   role: z.nativeEnum(Role),
   isActive: z.boolean(),
-  password: z.string().min(6, 'Şifre en az 6 karakter olmalı').optional().or(z.literal('')),
+  password: z.string().min(1, 'Şifre en az 1 karakter olmalı').optional().or(z.literal('')),
   adminOwnerId: z.string().optional(),
 });
 
