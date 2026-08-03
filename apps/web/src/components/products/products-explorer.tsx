@@ -45,8 +45,8 @@ const GRID_SIZE_STORAGE_KEY = 'products-grid-size';
 /** Kutucuk boyutuna göre grid kolon sayısı: bilgisayarda/telefonda istenen adetleri sabitler. */
 const GRID_SIZE_COLUMN_CLASSES: Record<GridSize, string> = {
   large: 'grid-cols-2 md:grid-cols-4',
-  medium: 'grid-cols-4 md:grid-cols-8',
-  small: 'grid-cols-6 md:grid-cols-12',
+  medium: 'grid-cols-3 md:grid-cols-6',
+  small: 'grid-cols-4 md:grid-cols-8',
 };
 
 const GRID_SIZE_OPTIONS: { value: GridSize; label: string; iconSize: number }[] = [
