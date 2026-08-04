@@ -35,7 +35,13 @@ jobs:
       - name: Run database migrations
         working-directory: C:\sites\stockfaster\apps\api
         shell: powershell
-        run: pnpm prisma migrate deploy
+        run: |
+          # postinstall'daki `prisma generate` yalnızca pnpm yeni paket kurduğunda tetiklenir;
+          # şema değişip bağımlılıklar değişmediğinde atlanabiliyor ve Client eski kalabiliyor.
+          # Build'in her zaman güncel şemayla eşleşen Client'ı görmesi için burada elle tetikliyoruz.
+          pnpm prisma generate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm prisma migrate deploy
 
       - name: Build
         working-directory: C:\sites\stockfaster
