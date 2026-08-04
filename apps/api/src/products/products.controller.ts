@@ -1,4 +1,5 @@
 import { extname, join } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
 import {
   BadRequestException,
   Body,
@@ -16,8 +17,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { User } from '@prisma/client';
 import { Role } from '@repo/shared-types';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { randomUUID } from 'crypto';
+import {
+  processProductImage,
+  ProcessedImage,
+} from '../common/utils/process-image';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -28,11 +33,24 @@ import { ReorderProductsDto } from './dto/reorder-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
+// iPhone kamerası varsayılan olarak HEIC/HEIF üretir; Android bazı cihazlarda
+// mimetype boş/octet-stream gönderebilir, o yüzden uzantıya da bakıyoruz.
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
+  'image/heic',
+  'image/heif',
+];
+const ALLOWED_IMAGE_EXTENSIONS = [
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif',
+  '.heic',
+  '.heif',
 ];
 
 @Controller('products')
@@ -110,18 +128,17 @@ export class ProductsController {
   @Roles(Role.ADMIN, Role.PLATFORM_ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: join(__dirname, '..', '..', 'uploads', 'products'),
-        filename: (_req, file, cb) => {
-          cb(null, `${randomUUID()}${extname(file.originalname)}`);
-        },
-      }),
-      limits: { fileSize: 5 * 1024 * 1024 },
+      storage: memoryStorage(),
+      // Ham telefon fotoğrafları 5MB'ı kolayca aşıyor; asıl küçültmeyi sharp yapıyor.
+      limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+        const extension = extname(file.originalname).toLowerCase();
+        const mimetypeOk = ALLOWED_IMAGE_TYPES.includes(file.mimetype);
+        const extensionOk = ALLOWED_IMAGE_EXTENSIONS.includes(extension);
+        if (!mimetypeOk && !extensionOk) {
           cb(
             new BadRequestException(
-              'Sadece JPEG, PNG, WEBP veya GIF yükleyebilirsiniz',
+              'Sadece JPEG, PNG, WEBP, GIF veya HEIC yükleyebilirsiniz',
             ),
             false,
           );
@@ -131,7 +148,7 @@ export class ProductsController {
       },
     }),
   )
-  uploadImage(
+  async uploadImage(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() actor: User,
@@ -139,9 +156,24 @@ export class ProductsController {
     if (!file) {
       throw new BadRequestException('Dosya bulunamadı');
     }
+
+    let processed: ProcessedImage;
+    try {
+      processed = await processProductImage(file.buffer, file.mimetype);
+    } catch {
+      throw new BadRequestException(
+        'Fotoğraf işlenemedi, dosya bozuk olabilir',
+      );
+    }
+
+    const filename = `${randomUUID()}${processed.extension}`;
+    const uploadsDir = join(__dirname, '..', '..', 'uploads', 'products');
+    await mkdir(uploadsDir, { recursive: true });
+    await writeFile(join(uploadsDir, filename), processed.buffer);
+
     return this.productsService.setImage(
       id,
-      `/uploads/products/${file.filename}`,
+      `/uploads/products/${filename}`,
       actor,
     );
   }

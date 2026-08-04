@@ -38,7 +38,7 @@ export function PhotoUploadButton({ productId }: { productId: string }) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept="image/*"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
