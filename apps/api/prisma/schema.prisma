@@ -50,8 +50,9 @@ model Warehouse {
   parent   Warehouse?  @relation("WarehouseTree", fields: [parentId], references: [id], onDelete: Cascade)
   children Warehouse[] @relation("WarehouseTree")
 
-  // Sadece alt depo iken (parentId dolu) anlamlıdır: üst deponun toplam görünümüne
-  // (allChildrenLabel) dahil mi, yoksa üst depodan bağımsız mı sayılsın.
+  // Bu deponun, bir üst bağlamın birleşik ("Bütün Ürünler"/allChildrenLabel) toplamına
+  // dahil mi yoksa bağımsız mı sayılacağı. Alt depoda üst deponun toplamı için geçerlidir;
+  // Ana Depo'da (parentId null) sahibin kök seviye "Bütün Ürünler" toplamı için geçerlidir.
   includeInParentTotal Boolean @default(true)
 
   // Bu depo çocuklara sahipse, kendi alt depolarının birleşik ("Bütün Ürünler")
