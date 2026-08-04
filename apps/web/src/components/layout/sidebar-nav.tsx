@@ -16,12 +16,13 @@ import {
 import { cn } from '@/lib/cn';
 import { WarehouseTreeNav } from './warehouse-tree-nav';
 
-export type PanelKey = 'user' | 'admin' | 'developer';
+export type PanelKey = 'user' | 'admin' | 'developer' | 'supplier';
 
 const PRODUCTS_HREF: Record<PanelKey, string | null> = {
   user: '/panel/products',
   admin: '/admin/products',
   developer: null,
+  supplier: null,
 };
 
 interface NavItem {
@@ -51,6 +52,7 @@ const NAV_ITEMS: Record<PanelKey, NavItem[]> = {
     { href: '/developer/users', label: 'Kullanıcılar', icon: Users },
     { href: '/developer/logs', label: 'Sistem Logları', icon: ScrollText },
   ],
+  supplier: [{ href: '/supplier', label: 'Siparişler', icon: ShoppingCart }],
 };
 
 export function SidebarNav({ panel }: { panel: PanelKey }) {

@@ -27,7 +27,11 @@ const INCLUDE = {
   },
   requestedBy: { select: { id: true, name: true } },
   decidedBy: { select: { id: true, name: true } },
+  suppliedBy: { select: { id: true, name: true } },
 } as const;
+
+/** Tedarikçi depo sahipliğine bağlı değildir — sadece onaylanmış/tedarik edilmiş siparişleri, tüm depolar genelinde görür. */
+const SUPPLIER_VISIBLE_STATUSES = [OrderStatus.APPROVED, OrderStatus.FULFILLED];
 
 @Injectable()
 export class OrdersService {
@@ -55,7 +59,7 @@ export class OrdersService {
 
   /** Aktörün bu siparişi görme/üzerinde işlem yapma yetkisi var mı — kendi siparişi ya da ürünün deposuna erişimi varsa. */
   private async assertOrderAccess(order: Order, actor: User) {
-    if (actor.role === 'PLATFORM_ADMIN') return;
+    if (actor.role === 'PLATFORM_ADMIN' || actor.role === 'SUPPLIER') return;
     if (order.requestedById === actor.id) return;
     if (actor.role === 'USER') {
       throw new NotFoundException('Sipariş bulunamadı');
@@ -96,6 +100,26 @@ export class OrdersService {
   }) {
     const { actor, status, page, limit } = params;
 
+    if (actor.role === 'SUPPLIER') {
+      const where = {
+        status:
+          status && SUPPLIER_VISIBLE_STATUSES.includes(status)
+            ? status
+            : { in: SUPPLIER_VISIBLE_STATUSES },
+      };
+      const [items, total] = await Promise.all([
+        this.prisma.order.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+          include: INCLUDE,
+        }),
+        this.prisma.order.count({ where }),
+      ]);
+      return { items, total, page, limit };
+    }
+
     const warehouseFilter = params.warehouseId
       ? {
           warehouseId: await assertWarehouseAccess(
@@ -131,37 +155,26 @@ export class OrdersService {
     return { items, total, page, limit };
   }
 
-  private async getPendingOrder(id: string, actor: User) {
+  private async getOrderInStatus(id: string, actor: User, allowed: string[]) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Sipariş bulunamadı');
     await this.assertOrderAccess(order, actor);
-    if (order.status !== 'PENDING') {
+    if (!allowed.includes(order.status)) {
       throw new BadRequestException(
-        'Sadece bekleyen siparişler için işlem yapılabilir',
+        'Bu işlem için sipariş uygun durumda değil',
       );
     }
     return order;
   }
 
-  async fulfill(id: string, dto: DecideOrderDto, actor: User) {
-    const order = await this.getPendingOrder(id, actor);
-
-    // Stok düşümü mevcut stok hareketi akışından geçer — eşzamanlılık koruması
-    // (overselling) ve tüketim/kritik seviye yeniden hesaplaması oradan gelir.
-    await this.stockService.createMovement(
-      {
-        productId: order.productId,
-        type: MovementType.OUT,
-        quantity: order.quantity,
-        reason: `Sipariş karşılandı${dto.note ? ` — ${dto.note}` : ''}`,
-      },
-      actor,
-    );
+  /** Admin talebi onaylar — stok henüz düşmez, sipariş tedarikçinin kuyruğuna düşer. */
+  async approve(id: string, dto: DecideOrderDto, actor: User) {
+    const order = await this.getOrderInStatus(id, actor, [OrderStatus.PENDING]);
 
     const updated = await this.prisma.order.update({
       where: { id },
       data: {
-        status: OrderStatus.FULFILLED,
+        status: OrderStatus.APPROVED,
         decidedById: actor.id,
         decidedAt: new Date(),
         decisionNote: dto.note,
@@ -171,7 +184,7 @@ export class OrdersService {
 
     await this.auditLog.log({
       userId: actor.id,
-      action: 'FULFILL',
+      action: 'APPROVE',
       resource: 'ORDER',
       resourceId: id,
       meta: { productId: order.productId, quantity: order.quantity },
@@ -181,7 +194,7 @@ export class OrdersService {
   }
 
   async reject(id: string, dto: DecideOrderDto, actor: User) {
-    const order = await this.getPendingOrder(id, actor);
+    const order = await this.getOrderInStatus(id, actor, [OrderStatus.PENDING]);
 
     const updated = await this.prisma.order.update({
       where: { id },
@@ -205,8 +218,51 @@ export class OrdersService {
     return updated;
   }
 
+  /** Tedarikçi fiili tedarik edildiğini onaylar — stok burada düşer ve sipariş kapanır. */
+  async supply(id: string, dto: DecideOrderDto, actor: User) {
+    const order = await this.getOrderInStatus(id, actor, [
+      OrderStatus.APPROVED,
+    ]);
+
+    // Stok düşümü mevcut stok hareketi akışından geçer — eşzamanlılık koruması
+    // (overselling) ve tüketim/kritik seviye yeniden hesaplaması oradan gelir.
+    await this.stockService.createMovement(
+      {
+        productId: order.productId,
+        type: MovementType.OUT,
+        quantity: order.quantity,
+        reason: `Sipariş tedarik edildi${dto.note ? ` — ${dto.note}` : ''}`,
+      },
+      actor,
+    );
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: {
+        status: OrderStatus.FULFILLED,
+        suppliedById: actor.id,
+        suppliedAt: new Date(),
+        supplyNote: dto.note,
+      },
+      include: INCLUDE,
+    });
+
+    await this.auditLog.log({
+      userId: actor.id,
+      action: 'SUPPLY',
+      resource: 'ORDER',
+      resourceId: id,
+      meta: { productId: order.productId, quantity: order.quantity },
+    });
+
+    return updated;
+  }
+
   async cancel(id: string, actor: User) {
-    const order = await this.getPendingOrder(id, actor);
+    const order = await this.getOrderInStatus(id, actor, [
+      OrderStatus.PENDING,
+      OrderStatus.APPROVED,
+    ]);
 
     const updated = await this.prisma.order.update({
       where: { id },

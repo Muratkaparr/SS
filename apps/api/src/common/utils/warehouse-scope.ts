@@ -74,7 +74,9 @@ export async function getAccessibleWarehouseIds(
   prisma: PrismaService,
   actor: User,
 ): Promise<string[]> {
-  if (actor.role === 'PLATFORM_ADMIN') {
+  // SUPPLIER, depo sahipliğine bağlı değildir — onaylanmış her siparişi (hangi
+  // Admin'e ait olursa olsun) tedarik edebilmesi için PLATFORM_ADMIN gibi sınırsız erişir.
+  if (actor.role === 'PLATFORM_ADMIN' || actor.role === 'SUPPLIER') {
     const all = await prisma.warehouse.findMany({ select: { id: true } });
     return all.map((w) => w.id);
   }

@@ -19,6 +19,7 @@ const ROLE_LABEL: Record<Role, string> = {
   [Role.USER]: 'Kullanıcı',
   [Role.ADMIN]: 'Admin',
   [Role.PLATFORM_ADMIN]: 'Platform Admin (Developer)',
+  [Role.SUPPLIER]: 'Tedarikçi',
 };
 
 const createBaseSchema = z.object({

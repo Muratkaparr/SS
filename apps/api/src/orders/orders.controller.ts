@@ -46,14 +46,14 @@ export class OrdersController {
     return this.ordersService.create(dto, actor);
   }
 
-  @Patch(':id/fulfill')
+  @Patch(':id/approve')
   @Roles(Role.ADMIN, Role.PLATFORM_ADMIN)
-  fulfill(
+  approve(
     @Param('id') id: string,
     @Body() dto: DecideOrderDto,
     @CurrentUser() actor: User,
   ) {
-    return this.ordersService.fulfill(id, dto, actor);
+    return this.ordersService.approve(id, dto, actor);
   }
 
   @Patch(':id/reject')
@@ -64,6 +64,16 @@ export class OrdersController {
     @CurrentUser() actor: User,
   ) {
     return this.ordersService.reject(id, dto, actor);
+  }
+
+  @Patch(':id/supply')
+  @Roles(Role.SUPPLIER, Role.PLATFORM_ADMIN)
+  supply(
+    @Param('id') id: string,
+    @Body() dto: DecideOrderDto,
+    @CurrentUser() actor: User,
+  ) {
+    return this.ordersService.supply(id, dto, actor);
   }
 
   @Patch(':id/cancel')

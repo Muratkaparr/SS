@@ -65,6 +65,9 @@ export interface Order {
   decidedBy: { id: string; name: string } | null;
   decidedAt: string | null;
   decisionNote: string | null;
+  suppliedBy: { id: string; name: string } | null;
+  suppliedAt: string | null;
+  supplyNote: string | null;
   createdAt: string;
   updatedAt: string;
   product: { id: string; name: string; unit: string; warehouseId: string; currentStock: number };

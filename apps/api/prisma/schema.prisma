@@ -11,6 +11,7 @@ enum Role {
   USER
   ADMIN
   PLATFORM_ADMIN
+  SUPPLIER
 }
 
 enum MovementType {
@@ -21,6 +22,7 @@ enum MovementType {
 
 enum OrderStatus {
   PENDING
+  APPROVED
   FULFILLED
   REJECTED
   CANCELLED
@@ -91,6 +93,7 @@ model User {
   refreshTokens   RefreshToken[]
   ordersRequested Order[]         @relation("OrderRequestedBy")
   ordersDecided   Order[]         @relation("OrderDecidedBy")
+  ordersSupplied  Order[]         @relation("OrderSuppliedBy")
   // Sadece role=USER için anlamlıdır: hangi depolarda çalışabileceğine dair açık
   // izinler. Boşsa (hiç kayıt yoksa) adminOwner'ın tüm depo havuzuna erişir.
   warehouseAccess WarehouseAccess[]
@@ -198,11 +201,17 @@ model Order {
   requestedById String
   requestedBy   User   @relation("OrderRequestedBy", fields: [requestedById], references: [id])
 
-  // Karar (fulfill/reject) yalnızca PENDING'den çıkarken doldurulur.
+  // Admin kararı (approve/reject) — yalnızca PENDING'den çıkarken doldurulur.
   decidedById  String?
   decidedBy    User?     @relation("OrderDecidedBy", fields: [decidedById], references: [id])
   decidedAt    DateTime?
   decisionNote String?
+
+  // Tedarikçinin fiili tedarik onayı — yalnızca APPROVED'dan FULFILLED'a geçerken doldurulur.
+  suppliedById String?
+  suppliedBy   User?     @relation("OrderSuppliedBy", fields: [suppliedById], references: [id])
+  suppliedAt   DateTime?
+  supplyNote   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

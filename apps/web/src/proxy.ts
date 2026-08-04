@@ -13,12 +13,14 @@ const ROLE_HOME: Record<string, string> = {
   USER: '/panel',
   ADMIN: '/admin',
   PLATFORM_ADMIN: '/developer',
+  SUPPLIER: '/supplier',
 };
 
 const ROLE_PREFIX: Record<string, string> = {
   '/panel': 'USER',
   '/admin': 'ADMIN',
   '/developer': 'PLATFORM_ADMIN',
+  '/supplier': 'SUPPLIER',
 };
 
 function matchPrefix(pathname: string) {

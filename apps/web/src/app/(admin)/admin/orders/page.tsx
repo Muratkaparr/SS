@@ -7,7 +7,8 @@ export default function AdminOrdersPage() {
       <div>
         <h1 className="text-xl font-semibold text-ink">Siparişler</h1>
         <p className="mt-1 text-sm text-muted">
-          Yeni sipariş oluşturun; kullanıcılardan gelen talepleri karşılayın veya reddedin.
+          Yeni sipariş oluşturun; kullanıcılardan gelen talepleri onaylayın veya reddedin. Onaylanan
+          siparişler tedarikçinin kuyruğuna düşer.
         </p>
       </div>
 
