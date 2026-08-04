@@ -13,6 +13,7 @@ import { WarehouseTabs } from '@/components/products/warehouse-tabs';
 import { Button } from '@/components/ui/button';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { ErrorState } from '@/components/ui/error-state';
+import { Tooltip } from '@/components/ui/tooltip';
 import { clientFetch } from '@/lib/client-fetch';
 import type { Product, Warehouse } from '@/lib/types';
 import { useWarehouseContext } from '@/lib/use-warehouse-context';
@@ -206,26 +207,26 @@ export function AdminProductsPageContent({ path }: { path: string[] }) {
           }
           renderActions={(product) => (
             <div className="flex justify-end gap-1.5">
-              <Button size="sm" variant="secondary" title="Düzenle" onClick={() => setEditing(product)}>
-                <Pencil size={14} />
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                title="Başka depoya ekle"
-                onClick={() => setDuplicating(product)}
-              >
-                <CopyPlus size={14} />
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                title="Sil"
-                onClick={() => setDeleting(product)}
-                className="hover:!bg-danger/10 hover:!text-danger"
-              >
-                <Trash2 size={14} />
-              </Button>
+              <Tooltip label="Düzenle">
+                <Button size="sm" variant="secondary" onClick={() => setEditing(product)}>
+                  <Pencil size={14} />
+                </Button>
+              </Tooltip>
+              <Tooltip label="Başka depoya ekle">
+                <Button size="sm" variant="secondary" onClick={() => setDuplicating(product)}>
+                  <CopyPlus size={14} />
+                </Button>
+              </Tooltip>
+              <Tooltip label="Sil">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setDeleting(product)}
+                  className="hover:!bg-danger/10 hover:!text-danger"
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </Tooltip>
             </div>
           )}
         />

@@ -1,6 +1,7 @@
 import { CopyPlus, ImageOff, Pencil, Trash2 } from 'lucide-react';
 import { PhotoUploadButton } from '@/components/admin/photo-upload-button';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip } from '@/components/ui/tooltip';
 import { StockStepper } from '@/components/products/stock-stepper';
 import { productImageUrl } from '@/lib/image-url';
 import { isProductCritical } from '@/lib/merge-products';
@@ -98,34 +99,37 @@ export function ProductCard({
         {(onEdit || onDelete || onDuplicate) && (
           <div className="mt-1 flex items-center gap-1.5 border-t border-border pt-2">
             {onEdit && (
-              <button
-                type="button"
-                onClick={() => onEdit(product)}
-                className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-ink"
-                title="Düzenle"
-              >
-                <Pencil size={14} />
-              </button>
+              <Tooltip label="Düzenle">
+                <button
+                  type="button"
+                  onClick={() => onEdit(product)}
+                  className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-ink"
+                >
+                  <Pencil size={14} />
+                </button>
+              </Tooltip>
             )}
             {onDuplicate && (
-              <button
-                type="button"
-                onClick={() => onDuplicate(product)}
-                className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-accent"
-                title="Başka depoya ekle"
-              >
-                <CopyPlus size={14} />
-              </button>
+              <Tooltip label="Başka depoya ekle">
+                <button
+                  type="button"
+                  onClick={() => onDuplicate(product)}
+                  className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-surface-hover hover:text-accent"
+                >
+                  <CopyPlus size={14} />
+                </button>
+              </Tooltip>
             )}
             {onDelete && (
-              <button
-                type="button"
-                onClick={() => onDelete(product)}
-                className="ml-auto flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-danger/10 hover:text-danger"
-                title="Sil"
-              >
-                <Trash2 size={14} />
-              </button>
+              <Tooltip label="Sil" className="ml-auto">
+                <button
+                  type="button"
+                  onClick={() => onDelete(product)}
+                  className="flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors duration-150 ease-out-quart hover:bg-danger/10 hover:text-danger"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </Tooltip>
             )}
           </div>
         )}
