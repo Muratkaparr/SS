@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { AuthModule } from './auth/auth.module';
+import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { StockModule } from './stock/stock.module';
@@ -22,6 +23,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     UsersModule,
     ProductsModule,
     StockModule,
+    OrdersModule,
     AuditLogModule,
     WarehousesModule,
   ],

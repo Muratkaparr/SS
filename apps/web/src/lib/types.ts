@@ -1,4 +1,4 @@
-import type { Confidence, MovementType } from '@repo/shared-types';
+import type { Confidence, MovementType, OrderStatus } from '@repo/shared-types';
 
 export interface Category {
   id: string;
@@ -53,6 +53,21 @@ export interface StockMovement {
   createdAt: string;
   product: { id: string; name: string; unit: string };
   user: { id: string; name: string };
+}
+
+export interface Order {
+  id: string;
+  productId: string;
+  quantity: number;
+  note: string | null;
+  status: OrderStatus;
+  requestedBy: { id: string; name: string };
+  decidedBy: { id: string; name: string } | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  product: { id: string; name: string; unit: string; warehouseId: string; currentStock: number };
 }
 
 export interface StockAlert {

@@ -19,6 +19,13 @@ enum MovementType {
   ADJUSTMENT
 }
 
+enum OrderStatus {
+  PENDING
+  FULFILLED
+  REJECTED
+  CANCELLED
+}
+
 model Warehouse {
   id        String   @id @default(uuid())
   name      String
@@ -82,6 +89,8 @@ model User {
   stockMovements  StockMovement[]
   auditLogs       AuditLog[]
   refreshTokens   RefreshToken[]
+  ordersRequested Order[]         @relation("OrderRequestedBy")
+  ordersDecided   Order[]         @relation("OrderDecidedBy")
   // Sadece role=USER için anlamlıdır: hangi depolarda çalışabileceğine dair açık
   // izinler. Boşsa (hiç kayıt yoksa) adminOwner'ın tüm depo havuzuna erişir.
   warehouseAccess WarehouseAccess[]
@@ -157,6 +166,7 @@ model Product {
   updatedAt DateTime @updatedAt
 
   movements StockMovement[]
+  orders    Order[]
 
   @@unique([warehouseId, name])
   @@index([warehouseId, sortOrder])
@@ -174,6 +184,32 @@ model StockMovement {
   createdAt DateTime     @default(now())
 
   @@index([productId, createdAt])
+}
+
+/** Bir kullanıcının bir ürün için verdiği talep — Admin onaylayana/reddedene kadar PENDING'de bekler. */
+model Order {
+  id        String      @id @default(uuid())
+  productId String
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int
+  note      String?
+  status    OrderStatus @default(PENDING)
+
+  requestedById String
+  requestedBy   User   @relation("OrderRequestedBy", fields: [requestedById], references: [id])
+
+  // Karar (fulfill/reject) yalnızca PENDING'den çıkarken doldurulur.
+  decidedById  String?
+  decidedBy    User?     @relation("OrderDecidedBy", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([status])
 }
 
 model AuditLog {

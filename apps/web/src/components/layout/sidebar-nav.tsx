@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Package,
   ScrollText,
+  ShoppingCart,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -33,11 +34,13 @@ const NAV_ITEMS: Record<PanelKey, NavItem[]> = {
   user: [
     { href: '/panel', label: 'Genel Bakış', icon: LayoutDashboard },
     { href: '/panel/products', label: 'Ürünler', icon: Package },
+    { href: '/panel/orders', label: 'Siparişler', icon: ShoppingCart },
   ],
   admin: [
     { href: '/admin', label: 'Genel Bakış', icon: LayoutDashboard },
     { href: '/admin/products', label: 'Ürünler', icon: Package },
     { href: '/admin/movements', label: 'Stok Hareketleri', icon: ArrowLeftRight },
+    { href: '/admin/orders', label: 'Siparişler', icon: ShoppingCart },
     { href: '/admin/users', label: 'Kullanıcılar', icon: Users },
     { href: '/admin/activity', label: 'Kullanıcı Aktiviteleri', icon: Activity },
   ],
