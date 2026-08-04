@@ -139,6 +139,8 @@ export function ProductsExplorer({
         params.set('warehouseId', warehouseQueryParam);
       } else if (isAllWarehouses && parentAggregateId) {
         params.set('parentAggregateId', parentAggregateId);
+      } else if (isAllWarehouses) {
+        params.set('rootAggregate', 'true');
       }
       params.set('page', String(page));
       params.set('limit', String(PAGE_SIZE));
