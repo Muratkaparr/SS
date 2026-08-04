@@ -61,7 +61,7 @@ export function WarehouseTabs({
     queryKey: ['products', 'warehouse-tabs-critical', contextKey],
     queryFn: () =>
       clientFetch<Paginated<Product>>(
-        `/products?limit=${AGGREGATE_FETCH_LIMIT}${parentId ? `&parentAggregateId=${parentId}` : '&rootAggregate=true'}`,
+        `/products?limit=${AGGREGATE_FETCH_LIMIT}${parentId ? `&parentAggregateId=${parentId}` : ''}`,
       ),
     enabled: (warehouses?.length ?? 0) > 0,
   });
@@ -359,9 +359,9 @@ export function WarehouseTabs({
                 </Badge>
               )}
             </button>
-            {canManage && (
+            {canManage && parentId !== null && (
               <label
-                title={`"${allLabel}" görünümüne dahil et/çıkar`}
+                title="Ana Depoya Dahil Et/Çıkar"
                 className="flex items-center opacity-0 transition-opacity duration-150 group-hover:opacity-100"
               >
                 <input
