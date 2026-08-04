@@ -67,12 +67,6 @@ export function WarehouseTabs({
   });
 
   useEffect(() => {
-    if (!activeId && warehouses && warehouses.length > 0) {
-      onChange(ALL_WAREHOUSES_ID);
-    }
-  }, [activeId, warehouses, onChange]);
-
-  useEffect(() => {
     if (creating) newInputRef.current?.focus();
   }, [creating]);
 

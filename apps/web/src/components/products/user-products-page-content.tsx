@@ -8,17 +8,24 @@ import { ProductsExplorer } from '@/components/products/products-explorer';
 import { WarehouseTabs } from '@/components/products/warehouse-tabs';
 import { ErrorState } from '@/components/ui/error-state';
 import { useWarehouseContext } from '@/lib/use-warehouse-context';
+import { ALL_WAREHOUSES_ID } from '@/lib/warehouse-constants';
 
 export function UserProductsPageContent({ path }: { path: string[] }) {
   const router = useRouter();
   const { currentParentId, breadcrumb, allLabel, preselectedWarehouseId, contextError } =
     useWarehouseContext(path);
-  const [activeWarehouseId, setActiveWarehouseId] = useState<string | null>(null);
 
+  // Kullanıcının bu bağlamda ELLE seçtiği sekme; bağlam (path) değişince sıfırlanır.
+  const [manualWarehouseId, setManualWarehouseId] = useState<string | null>(null);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- bağlam değişince sekme seçimi sıfırlanmalı/yaprak depoda o depo önceden seçili gelmeli
-    setActiveWarehouseId(preselectedWarehouseId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bağlam değişince manuel seçim sıfırlanmalı
+    setManualWarehouseId(null);
   }, [currentParentId, preselectedWarehouseId]);
+
+  // Sidebar'dan doğrudan bir yaprak depoya girildiyse o depo önceden seçili gelir; aksi
+  // halde bağlamın birleşik "Bütün Ürünler" görünümü varsayılandır — senkron hesaplanır,
+  // bir effect'in "düzeltmesini" beklemez, ekran hiçbir zaman boş kalmaz.
+  const activeWarehouseId = manualWarehouseId ?? preselectedWarehouseId ?? ALL_WAREHOUSES_ID;
 
   if (contextError) {
     return (
@@ -68,7 +75,7 @@ export function UserProductsPageContent({ path }: { path: string[] }) {
 
       <WarehouseTabs
         activeId={activeWarehouseId}
-        onChange={setActiveWarehouseId}
+        onChange={setManualWarehouseId}
         parentId={currentParentId}
         allLabel={allLabel}
       />

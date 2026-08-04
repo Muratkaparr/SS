@@ -23,7 +23,20 @@ export function AdminProductsPageContent({ path }: { path: string[] }) {
   const queryClient = useQueryClient();
   const { currentParentId, breadcrumb, allLabel, renameAllLabel, preselectedWarehouseId, contextError } =
     useWarehouseContext(path);
-  const [activeWarehouseId, setActiveWarehouseId] = useState<string | null>(null);
+  // Kullanıcının bu bağlamda ELLE seçtiği sekme (tab tıklaması). Bağlam (path) değişince
+  // sıfırlanır — aksi halde önceki bağlamdan kalan bir id, yeni bağlamda geçersiz sekme
+  // seçili kalmasına (ve dolayısıyla boş ekrana) yol açabilir.
+  const [manualWarehouseId, setManualWarehouseId] = useState<string | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bağlam değişince manuel seçim sıfırlanmalı
+    setManualWarehouseId(null);
+  }, [currentParentId, preselectedWarehouseId]);
+
+  // Sidebar'dan doğrudan bir yaprak depoya (alt deposu olmayan) girildiyse o depo önceden
+  // seçili gelir; aksi halde bu bağlamın birleşik "Bütün Ürünler" görünümü varsayılandır.
+  // Effect'e bağlı bir "düzeltme" adımı beklemeden, her render'da senkron hesaplanır —
+  // WarehouseTabs'in kendi verisi henüz gelmemiş olsa bile ekran hiçbir zaman boş kalmaz.
+  const activeWarehouseId = manualWarehouseId ?? preselectedWarehouseId ?? ALL_WAREHOUSES_ID;
   const isAllWarehouses = activeWarehouseId === ALL_WAREHOUSES_ID;
   const [pageTitle, setPageTitle] = useState('Ürünler');
   const [editingTitle, setEditingTitle] = useState(false);
@@ -32,14 +45,6 @@ export function AdminProductsPageContent({ path }: { path: string[] }) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [duplicating, setDuplicating] = useState<Product | null>(null);
-
-  // Bağlam (hangi Ana Depo'nun içindeyiz) değiştiğinde önceki seçili sekme artık geçersiz.
-  // Sidebar'dan doğrudan bir yaprak depoya (alt deposu olmayan) girildiyse, sekme şeridi
-  // onun üst deponun kardeşlerini gösterir ve bu depo orada önceden seçili gelir.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- bağlam değişince sekme seçimi sıfırlanmalı/yaprak depoda o depo önceden seçili gelmeli
-    setActiveWarehouseId(preselectedWarehouseId);
-  }, [currentParentId, preselectedWarehouseId]);
 
   const { data: activeWarehouse } = useQuery({
     queryKey: ['warehouses', 'byId', activeWarehouseId],
@@ -165,7 +170,7 @@ export function AdminProductsPageContent({ path }: { path: string[] }) {
 
       <WarehouseTabs
         activeId={activeWarehouseId}
-        onChange={setActiveWarehouseId}
+        onChange={setManualWarehouseId}
         canManage
         parentId={currentParentId}
         allLabel={allLabel}
