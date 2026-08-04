@@ -268,23 +268,6 @@ export function ProductFormModal({
           <FieldError>{errors.criticalLevel?.message}</FieldError>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label htmlFor="leadTimeDays">Tedarik Süresi (gün)</Label>
-            <Input id="leadTimeDays" type="number" min={1} {...register('leadTimeDays')} />
-            <FieldError>{errors.leadTimeDays?.message}</FieldError>
-          </div>
-          <div>
-            <Label htmlFor="safetyMarginDays">Güvenlik Payı (gün)</Label>
-            <Input id="safetyMarginDays" type="number" min={0} {...register('safetyMarginDays')} />
-            <FieldError>{errors.safetyMarginDays?.message}</FieldError>
-          </div>
-        </div>
-        <p className="-mt-2 text-xs text-muted">
-          Kritik seviye önerisi bu iki değere göre hesaplanır: tedarikçiden ürün gelene kadar geçen
-          süre + ek güvenlik payı.
-        </p>
-
         {!isEdit && (
           <div>
             <Label htmlFor="openingStock">Açılış Stoğu (opsiyonel)</Label>
