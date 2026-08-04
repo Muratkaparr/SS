@@ -169,6 +169,16 @@ export function OrdersList({
                           Tedarik Et
                         </Button>
                       )}
+                      {order.status === 'APPROVED' && canDecide && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={cancelMutation.isPending}
+                          onClick={() => cancelMutation.mutate(order.id)}
+                        >
+                          Sil
+                        </Button>
+                      )}
                       {(order.status === 'PENDING' || order.status === 'APPROVED') &&
                         canCancel &&
                         !(order.status === 'PENDING' && canDecide) &&
