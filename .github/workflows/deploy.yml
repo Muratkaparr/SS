@@ -21,6 +21,12 @@ jobs:
             /R:2 /W:2 /NFL /NDL
           if ($LASTEXITCODE -ge 8) { exit 1 } else { exit 0 }
 
+      - name: Stop services
+        shell: powershell
+        run: |
+          Stop-Service stockfaster-api -ErrorAction SilentlyContinue
+          Stop-Service stockfaster-web -ErrorAction SilentlyContinue
+
       - name: Install dependencies
         working-directory: C:\sites\stockfaster
         shell: powershell
