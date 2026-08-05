@@ -110,25 +110,6 @@ export async function getAccessibleWarehouseIds(
 }
 
 /**
- * Kök seviyedeki "Bütün Ürünler" birleşik görünümü için id listesi: includeInParentTotal=false
- * işaretli bir Ana Depo (bağımsız depo — bkz. WarehousesService.create) ve tüm alt ağacı bu
- * havuzdan hariç tutulur, kendi sekmesinde/bağlamında normal şekilde durmaya devam eder.
- */
-export async function getRootAggregateWarehouseIds(
-  prisma: PrismaService,
-  ownerId: string,
-): Promise<string[]> {
-  const allWarehouses = await prisma.warehouse.findMany({
-    where: { ownerId },
-    select: { id: true, parentId: true, includeInParentTotal: true },
-  });
-  const includedRootIds = allWarehouses
-    .filter((w) => w.parentId === null && w.includeInParentTotal)
-    .map((w) => w.id);
-  return Array.from(collectSubtreeIds(allWarehouses, includedRootIds, true));
-}
-
-/**
  * Gezinme (sekme/sidebar ağacı) için: erişilebilir depolara ek olarak, izin verilen
  * depoların ata (ancestor) zincirini de içerir — derinde yetkilendirilen bir depoya
  * "içinden geçerek" ulaşılabilsin diye. Ürün/stok sorgularında KULLANILMAMALI — sadece

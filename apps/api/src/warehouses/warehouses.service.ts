@@ -155,10 +155,6 @@ export class WarehousesService {
         ownerId,
         parentId,
         sortOrder: (last?.sortOrder ?? -1) + 1,
-        // Yeni bir Ana Depo (parentId yok) varsayılan olarak bağımsızdır — kök seviye
-        // "Bütün Ürünler" toplamına karışmaz. Alt depolarda davranış değişmez (üst
-        // depoya dahil, varsayılan true).
-        ...(parentId === null ? { includeInParentTotal: false } : {}),
       },
       include: { owner: { select: { id: true, name: true } } },
     });
