@@ -12,7 +12,9 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import {
   assertWarehouseAccess,
   getAccessibleWarehouseIds,
+  getRootAggregateWarehouseIds,
   getWarehouseSubtreeIds,
+  ownerScopeFor,
 } from '../common/utils/warehouse-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
@@ -45,6 +47,8 @@ export class ProductsService {
     warehouseId?: string;
     /** Bir ana deponun kendisi + "Ana Depoya Dahil Et" işaretli alt depolarının birleşik görünümü. */
     parentAggregateId?: string;
+    /** Kök seviye "Bütün Ürünler": bağımsız (includeInParentTotal=false) Ana Depo'lar hariç tutulur. */
+    rootAggregate?: boolean;
     search?: string;
     categoryId?: string;
     criticalOnly?: boolean;
@@ -74,6 +78,21 @@ export class ProductsService {
       warehouseFilter = {
         warehouseId: { in: subtreeIds.filter((id) => accessibleSet.has(id)) },
       };
+    } else if (params.rootAggregate) {
+      const accessible = await getAccessibleWarehouseIds(this.prisma, actor);
+      const ownerId = ownerScopeFor(actor);
+      if (ownerId) {
+        const rootAggregateIds = new Set(
+          await getRootAggregateWarehouseIds(this.prisma, ownerId),
+        );
+        warehouseFilter = {
+          warehouseId: {
+            in: accessible.filter((id) => rootAggregateIds.has(id)),
+          },
+        };
+      } else {
+        warehouseFilter = { warehouseId: { in: accessible } };
+      }
     } else {
       warehouseFilter = {
         warehouseId: {

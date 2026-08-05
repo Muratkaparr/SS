@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, Check, ChevronRight, FolderInput, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Boxes, Check, ChevronRight, FolderInput, Pencil, Plus, Star, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PublicUser } from '@repo/shared-types';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
@@ -126,8 +126,19 @@ function WarehouseTreeNode({
               className={cn('transition-transform duration-150', isOpen && 'rotate-90')}
             />
           </span>
-          <Link href={hrefFor(basePath, ids)} className="flex-1 truncate py-1.5 pl-0.5">
-            {warehouse.name}
+          <Link
+            href={hrefFor(basePath, ids)}
+            className="flex flex-1 items-center gap-1 truncate py-1.5 pl-0.5"
+          >
+            {ancestorIds.length === 0 && !warehouse.includeInParentTotal && (
+              <Star
+                size={11}
+                className="shrink-0 fill-current text-accent"
+              >
+                <title>Bağımsız depo — Bütün Ürünler&apos;e dahil değil</title>
+              </Star>
+            )}
+            <span className="truncate">{warehouse.name}</span>
           </Link>
           {canManage && (
             <span className="hidden items-center gap-0.5 group-hover:flex">
@@ -230,7 +241,7 @@ export function WarehouseTreeNav({
     mutationFn: (name: string) =>
       clientFetch<Warehouse>('/warehouses', { method: 'POST', body: JSON.stringify({ name }) }),
     onSuccess: () => {
-      toast.success('Ana depo oluşturuldu');
+      toast.success('Bağımsız depo oluşturuldu');
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       setCreating(false);
       setNewName('');
@@ -244,7 +255,7 @@ export function WarehouseTreeNav({
     : [];
 
   const isEmpty = isLoading || !roots || roots.length === 0;
-  // Sidebar sessizce boş kalmamalı: Admin için zaten aşağıda "Yeni Ana Depo" kutusu
+  // Sidebar sessizce boş kalmamalı: Admin için zaten aşağıda "Bağımsız Depo Ekle" kutusu
   // görünür, ama User (canManage=false) için hiçbir eylem yoksa bile kısa bir açıklama
   // gösterilir — aksi halde bu bölüm hiç var olmamış gibi görünür.
   if (isEmpty && !canManage) {
@@ -279,7 +290,7 @@ export function WarehouseTreeNav({
                   setNewName('');
                 }
               }}
-              placeholder="Ana depo adı…"
+              placeholder="Bağımsız depo adı…"
               className="h-7 w-full rounded-sm border border-accent bg-surface px-2 text-xs text-ink outline-none"
             />
             <button
@@ -303,11 +314,11 @@ export function WarehouseTreeNav({
           <button
             type="button"
             onClick={() => setCreating(true)}
-            title="Diğerlerinden bağımsız, yeni ve ayrı bir Ana Depo oluşturur"
+            title="Diğer Ana Depo'lardan tamamen ayrı, Bütün Ürünler'e hiç karışmayan yeni bir depo oluşturur"
             className="mb-1 flex w-full items-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-1.5 text-xs font-medium text-muted transition-colors duration-150 ease-out-quart hover:border-accent hover:bg-surface-hover hover:text-ink"
           >
             <Plus size={12} />
-            Yeni Ana Depo
+            Bağımsız Depo Ekle
           </button>
         ))}
       {roots && roots.length > 1 && (

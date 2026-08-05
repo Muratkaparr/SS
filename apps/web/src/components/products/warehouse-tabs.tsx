@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, Check, GripVertical, Pencil, Plus, X } from 'lucide-react';
+import { Boxes, Check, GripVertical, Pencil, Plus, Star, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,7 +61,7 @@ export function WarehouseTabs({
     queryKey: ['products', 'warehouse-tabs-critical', contextKey],
     queryFn: () =>
       clientFetch<Paginated<Product>>(
-        `/products?limit=${AGGREGATE_FETCH_LIMIT}${parentId ? `&parentAggregateId=${parentId}` : ''}`,
+        `/products?limit=${AGGREGATE_FETCH_LIMIT}${parentId ? `&parentAggregateId=${parentId}` : '&rootAggregate=true'}`,
       ),
     enabled: (warehouses?.length ?? 0) > 0,
   });
@@ -349,6 +349,11 @@ export function WarehouseTabs({
               />
             )}
             <button type="button" onClick={() => onChange(w.id)} className="flex items-center gap-1.5">
+              {parentId === null && !w.includeInParentTotal && (
+                <Star size={11} className="shrink-0 fill-current text-accent">
+                  <title>Bağımsız depo — {allLabel}&apos;e dahil değil</title>
+                </Star>
+              )}
               {w.name}
               <Badge tone="neutral" withIcon={false} className="px-1.5 py-0">
                 {w.productCount}
